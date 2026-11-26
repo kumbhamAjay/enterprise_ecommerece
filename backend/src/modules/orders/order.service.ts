@@ -5,9 +5,11 @@ import type { Db } from "../auth/auth.repository";
 import * as cartRepo from "../cart/cart.repository";
 import { getCart } from "../cart/cart.service";
 import * as inventory from "../inventory/inventory.service";
+import { kickEmails, recordOrderEmail } from "../notifications/email.service";
 import * as paymentRepo from "../payments/payment.repository";
 import * as repo from "./order.repository";
 import { fromCents, priceOrder, toCents } from "./pricing";
+import type { Template } from "../notifications/email.templates";
 import type { CheckoutInput, ListQuery, OrderStatus } from "./order.types";
 
 const PAYMENT_WINDOW_MS = Number(process.env.ORDER_PAYMENT_WINDOW_MINUTES ?? 30) * 60_000;
@@ -75,10 +77,12 @@ export async function checkout(userId: string, email: string, input: CheckoutInp
     await repo.logStatus(db, id, null, "PENDING_PAYMENT", userId, "Order placed");
     await cartRepo.clearLines(db, cartId);
     await repo.attachKey(db, userId, key, id);
+    await recordOrderEmail(db, id, "order-placed"); // same transaction: no order without its confirmation email on record
     return { orderId: id, replayed: false, crossed };
   }, { retries: RETRIES });
 
   await Promise.all(crossed.map(inventory.notifyLowStock)); // after commit, best-effort
+  if (!replayed) await kickEmails();
   return { order: await repo.getOrder(pool, orderId), replayed };
 }
 
@@ -120,7 +124,12 @@ async function applyTransition(db: Db, o: { id: string; status: OrderStatus; ord
   }
   await repo.setStatus(db, o.id, to, note);
   await repo.logStatus(db, o.id, o.status, to, actor.userId, note);
+  const mail = ORDER_EMAIL[to];
+  if (mail) await recordOrderEmail(db, o.id, mail, { reason: note }); // outbox row commits (or rolls back) with the status change
 }
+
+// Which customer email each status change triggers (PROCESSING is internal: no email).
+const ORDER_EMAIL: Partial<Record<OrderStatus, Template>> = { PAID: "order-paid", SHIPPED: "order-shipped", DELIVERED: "order-delivered", CANCELLED: "order-cancelled", REFUNDED: "order-refunded" };
 
 async function transition(id: string, to: OrderStatus, actor: Actor, note?: string, owner?: string) {
   await withTransaction(async (db) => {
@@ -129,6 +138,7 @@ async function transition(id: string, to: OrderStatus, actor: Actor, note?: stri
     if (o.status === to) return; // already there: repeating the request is a no-op (idempotent)
     await applyTransition(db, o, to, actor, note);
   }, { retries: RETRIES });
+  await kickEmails();
   return repo.getOrder(pool, id);
 }
 
@@ -173,6 +183,6 @@ export async function expireStale(batch = 50): Promise<number> {
       return rows.length;
     }, { retries: RETRIES });
     total += n;
-    if (n < batch) return total;
+    if (n < batch) { if (total) await kickEmails(); return total; }
   }
 }

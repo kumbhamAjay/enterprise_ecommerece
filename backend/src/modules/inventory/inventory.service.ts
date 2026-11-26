@@ -1,7 +1,7 @@
 import { pool, withTransaction } from "../../config/db";
 import { HttpError } from "../../utils/httpError";
 import { afterWrite } from "../../utils/cache";
-import { sendMail } from "../../utils/mailer";
+import { enqueueEmail } from "../notifications/email.service";
 import type { Db } from "../auth/auth.repository";
 import * as repo from "./inventory.repository";
 import type { AdjustInput, ListQuery, ReserveItem } from "./inventory.types";
@@ -22,13 +22,15 @@ const crossedDown = (after: repo.Stock, removed: number) => {
 };
 
 // Best-effort, after commit: a failed email must never undo or fail a stock movement.
+// One alert per product per admin per hour at most (dedupe key), however often stock crosses the line.
 export async function notifyLowStock(productId: string) {
   try {
     const [label, view, admins] = await Promise.all([repo.productLabel(pool, productId), repo.getInventory(pool, productId), repo.adminEmails(pool)]);
     if (!label || !view) return;
+    const hour = Math.floor(Date.now() / 3_600_000);
     await Promise.all(
       admins.map((to) =>
-        sendMail({ to, subject: `Low stock: ${label.name}`, text: `${label.name} (${label.sku}) is down to ${view.available} available (alert threshold ${view.lowStockThreshold}).` }),
+        enqueueEmail({ template: "low-stock", to, dedupeKey: `low-stock:${productId}:${to}:${hour}`, payload: { name: label.name, sku: label.sku, available: view.available, threshold: view.lowStockThreshold } }),
       ),
     );
   } catch (e) {

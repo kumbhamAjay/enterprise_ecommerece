@@ -1,11 +1,9 @@
 import "dotenv/config";
 import app from "./app";
 import { testDatabaseConnection } from "./config/db";
-import { expireStale } from "./modules/inventory/inventory.service";
-import { expireStale as expireOrders } from "./modules/orders/order.service";
-import { reconcile } from "./modules/payments/payment.service";
 import { getRedis } from "./config/redis";
-import { withLock } from "./utils/lock";
+import { startWorkers } from "./jobs/workers";
+import { scheduleJobs, startTimerFallback } from "./jobs/schedule";
 
 const PORT = process.env.PORT || 5000;
 
@@ -18,12 +16,15 @@ async function startServer() {
       console.log(`Server running on port ${PORT}`);
     });
 
-    // Release stock held by abandoned reservations. ponytail: in-process timer; use a BullMQ repeatable job in Module 8.
-    setInterval(() => expireStale().catch((e) => console.error("reservation sweep failed:", e)), 60_000).unref();
-    // Unpaid orders lapse together with their stock hold.
-    // Payment reconciliation: catches lost webhooks, abandoned payments and failed refunds. Only runs when Stripe is configured.
-    if (process.env.STRIPE_SECRET_KEY) setInterval(() => withLock("reconcile", 4 * 60_000, reconcile).catch((e) => console.error("reconcile failed:", e)), 5 * 60_000).unref(); // lock: several instances, one reconciler
-    setInterval(() => expireOrders().catch((e) => console.error("order sweep failed:", e)), 60_000).unref();
+    // Background work (BullMQ): email sending + scheduled maintenance. By default the workers run inside this process;
+    // set RUN_WORKERS=false and run `npm run worker` to scale them separately.
+    if (process.env.RUN_WORKERS !== "false") {
+      const workers = startWorkers();
+      for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => workers.close().finally(() => process.exit(0)));
+    }
+    scheduleJobs()
+      .then(() => console.log("Background jobs scheduled (BullMQ)"))
+      .catch((e) => { console.error("BullMQ unavailable, using in-process timers:", e.message); startTimerFallback(); });
   } catch (error) {
     console.error("Failed to start server:", error);
     process.exit(1);

@@ -303,3 +303,24 @@ CREATE TABLE IF NOT EXISTS stripe_events (
 
 -- Uploaded images remember their Cloudinary public_id so deleting an image also deletes the stored file.
 ALTER TABLE product_images ADD COLUMN IF NOT EXISTS public_id text;
+
+-- ================= Module 8: email outbox + log =================
+-- One row per email we intend to send. It is written in the SAME transaction as the business change (transactional outbox),
+-- so an order can never exist without its confirmation email being recorded, even if Redis or the queue is down at that moment.
+CREATE TABLE IF NOT EXISTS email_log (
+  id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  dedupe_key  text NOT NULL UNIQUE,                 -- e.g. 'order-paid:42': recording the same email twice is a no-op
+  template    text NOT NULL,
+  to_email    text NOT NULL,
+  payload     jsonb NOT NULL DEFAULT '{}',
+  priority    int  NOT NULL DEFAULT 3,              -- lower number = sent first
+  status      text NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT', 'FAILED')),
+  attempts    int  NOT NULL DEFAULT 0,
+  last_error  text,
+  provider_id text,
+  enqueued_at timestamptz,                          -- NULL = not handed to the queue yet
+  created_at  timestamptz DEFAULT now(),
+  sent_at     timestamptz
+);
+CREATE INDEX IF NOT EXISTS email_log_dispatch_idx ON email_log (priority, id) WHERE status = 'PENDING';
+CREATE INDEX IF NOT EXISTS email_log_created_idx  ON email_log (created_at DESC);
