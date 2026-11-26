@@ -141,3 +141,12 @@ export type Order = {
 };
 export type OrderListItem = { id: string; orderNumber: string; customerEmail: string; status: OrderStatus; total: string; currency: string; placedAt: string; itemCount: number; thumbs: string[] };
 export type CheckoutPreview = CartView & { subtotal: string; shipping: string; tax: string; total: string; amountToFreeShipping: string };
+
+export type EmailStatus = "PENDING" | "SENT" | "FAILED";
+export type EmailRow = { id: string; template: string; to: string; status: EmailStatus; attempts: number; lastError: string | null; priority: number; createdAt: string; sentAt: string | null };
+export type EmailStats = {
+  emails: Record<EmailStatus, number>;
+  queue: { waiting: number; active: number; delayed: number; failed: number; completed: number } | null;
+  mode: "queue" | "inline";
+  provider: string;
+};

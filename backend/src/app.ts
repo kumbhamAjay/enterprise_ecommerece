@@ -13,6 +13,8 @@ import { adminOrderRoutes, checkoutRoutes, orderRoutes } from "./modules/orders/
 import { adminPaymentRoutes, paymentRoutes } from "./modules/payments/payment.routes";
 import { adminCacheRoutes } from "./modules/cache/cache.routes";
 import { adminUploadRoutes } from "./modules/uploads/upload.routes";
+import { adminEmailRoutes } from "./modules/notifications/email.routes";
+import { mountBullBoard } from "./modules/notifications/board";
 import { cacheContext } from "./utils/cache";
 import { webhook } from "./modules/payments/payment.controller";
 import { errorHandler } from "./middlewares/errorHandler";
@@ -51,6 +53,8 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/admin/payments", adminPaymentRoutes);
 app.use("/api/admin/cache", adminCacheRoutes);
 app.use("/api/admin/uploads", adminUploadRoutes);
+app.use("/api/admin/emails", adminEmailRoutes);
+mountBullBoard(app);
 app.use(errorHandler);
 
 export default app;

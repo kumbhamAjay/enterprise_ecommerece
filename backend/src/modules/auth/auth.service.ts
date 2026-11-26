@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
 import { createHash, randomBytes } from "crypto";
 import { pool, withTransaction } from "../../config/db";
-import { sendMail } from "../../utils/mailer";
+import { enqueueEmail } from "../notifications/email.service";
 import { revokeAccessTokens } from "../../utils/revocation";
 import { HttpError } from "../../utils/httpError";
 import { signAccessToken } from "../../utils/jwt";
@@ -20,7 +20,7 @@ export async function register(input: RegisterInput): Promise<UserDTO> {
     const user = await insertUser(client, { ...input, passwordHash });
     await assignRole(client, user.id, "CUSTOMER");
     await client.query("COMMIT");
-    sendVerification(user.id, user.email).catch(console.error); // best-effort, never fails registration
+    sendVerification(user.id, user.email, user.firstName).catch(console.error); // best-effort, never fails registration
     return { ...user, role: "CUSTOMER" };
   } catch (err: any) {
     await client.query("ROLLBACK");
@@ -122,16 +122,17 @@ async function consumeToken(db: repo.Db, token: string, type: repo.TokenType): P
   return row.userId;
 }
 
-export async function sendVerification(userId: string, email: string) {
+export async function sendVerification(userId: string, email: string, firstName?: string) {
   const t = await createToken(userId, "EMAIL_VERIFY", 24 * HOUR);
-  await sendMail({ to: email, subject: "Verify your email", text: `${APP_URL}/verify-email?token=${t}` });
+  // dedupe key per TOKEN: a resend is a new email, a retry of this one is not
+  await enqueueEmail({ template: "verify-email", to: email, dedupeKey: `verify-email:${userId}:${sha256(t).slice(0, 12)}`, payload: { firstName, link: `${APP_URL}/verify-email?token=${t}` } });
 }
 
 export async function resendVerification(userId: string) {
   const user = await repo.findUserById(pool, userId);
   if (!user) throw new HttpError(404, "User not found");
   if (user.emailVerified) throw new HttpError(409, "Email already verified");
-  await sendVerification(user.id, user.email);
+  await sendVerification(user.id, user.email, user.firstName);
 }
 
 export async function verifyEmail(token: string) {
@@ -143,7 +144,7 @@ export async function forgotPassword(email: string) {
   const user = await repo.findUserByEmail(pool, email);
   if (!user?.isActive) return;
   const t = await createToken(user.id, "PASSWORD_RESET", HOUR);
-  await sendMail({ to: user.email, subject: "Reset your password", text: `${APP_URL}/reset-password?token=${t}` });
+  await enqueueEmail({ template: "password-reset", to: user.email, dedupeKey: `password-reset:${user.id}:${sha256(t).slice(0, 12)}`, payload: { firstName: user.firstName, link: `${APP_URL}/reset-password?token=${t}` } });
 }
 
 export async function resetPassword(token: string, newPassword: string) {

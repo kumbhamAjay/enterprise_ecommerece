@@ -102,6 +102,22 @@ const orderPaths = {
   },
 };
 
+const emailPaths = {
+  "/api/admin/emails": {
+    get: { ...op({ tag: "Emails", summary: "Email log (the outbox): every email we intended to send, with status, attempts and last error", admin: true, res: { 200: ok("{ data, meta }") } }),
+      parameters: [{ name: "status", in: "query", required: false, schema: { type: "string", enum: ["PENDING", "SENT", "FAILED"] } }, { name: "page", in: "query", required: false, schema: { type: "integer" } }, { name: "limit", in: "query", required: false, schema: { type: "integer" } }] },
+  },
+  "/api/admin/emails/stats": {
+    get: op({ tag: "Emails", summary: "Counts per status, live queue counts, delivery mode (queue/inline) and provider", admin: true, res: { 200: ok() } }),
+  },
+  "/api/admin/emails/{id}/retry": {
+    post: op({ tag: "Emails", summary: "Give a FAILED email a fresh set of attempts", admin: true, params: idParam, res: { 200: ok(), 404: err("No failed email with that id") } }),
+  },
+  "/api/admin/queues": {
+    get: { tags: ["Emails"], summary: "Bull Board queue dashboard (HTML). HTTP basic auth: user admin, password BULL_BOARD_PASSWORD. 404 when not configured.", responses: { 200: ok("HTML dashboard"), 401: err("Basic auth required"), 404: err("Not configured") } },
+  },
+};
+
 const uploadPaths = {
   "/api/admin/uploads/sign": {
     post: op({ tag: "Uploads", summary: "Short-lived signature for a direct browser -> Cloudinary image upload (folder and allowed formats are fixed by the signature). The API secret never leaves the server.", admin: true, res: { 200: ok("{ cloudName, apiKey, timestamp, signature, folder, allowedFormats, uploadUrl }"), 503: err("Cloudinary not configured") } }),
@@ -180,7 +196,7 @@ const catalogInventory = {
 export const openapi = {
   openapi: "3.0.3",
   info: { title: "ShopEasy API", version: "1.0.0" },
-  tags: [{ name: "Auth" }, { name: "Users" }, { name: "Manufacturers" }, { name: "Categories" }, { name: "Products" }, { name: "Inventory" }, { name: "Cart" }, { name: "Orders" }, { name: "Payments" }, { name: "Cache" }, { name: "Uploads" }],
+  tags: [{ name: "Auth" }, { name: "Users" }, { name: "Manufacturers" }, { name: "Categories" }, { name: "Products" }, { name: "Inventory" }, { name: "Cart" }, { name: "Orders" }, { name: "Payments" }, { name: "Cache" }, { name: "Uploads" }, { name: "Emails" }],
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
     schemas: {
@@ -198,6 +214,7 @@ export const openapi = {
     ...paymentPaths,
     ...cachePaths,
     ...uploadPaths,
+    ...emailPaths,
     "/api/auth/register": { post: op({ tag: "Auth", summary: "Register a customer", body: auth.registerSchema, res: { 201: ok("User created (role CUSTOMER)"), 409: err("Email already registered") } }) },
     "/api/auth/login": { post: op({ tag: "Auth", summary: "Log in; returns access + refresh tokens", body: auth.loginSchema, res: { 200: ok(), 401: err("Invalid credentials") } }) },
     "/api/auth/refresh": { post: op({ tag: "Auth", summary: "Rotate refresh token (single-use; reuse revokes all sessions)", body: auth.refreshSchema, res: { 200: ok("New token pair"), 401: err("Invalid, expired or reused token") } }) },

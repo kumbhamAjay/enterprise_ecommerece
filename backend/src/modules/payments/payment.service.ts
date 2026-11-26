@@ -4,6 +4,7 @@ import { getStripe } from "../../config/stripe";
 import { HttpError } from "../../utils/httpError";
 import type { Db } from "../auth/auth.repository";
 import * as orderRepo from "../orders/order.repository";
+import { kickEmails } from "../notifications/email.service";
 import { settlePaymentInTx } from "../orders/order.service";
 import { toCents } from "../orders/pricing";
 import * as repo from "./payment.repository";
@@ -62,7 +63,10 @@ export async function processEvent(event: Stripe.Event): Promise<"processed" | "
       default: return "ignored" as const; // still recorded, so a replay is cheap
     }
   }, { retries: RETRIES });
-  if (result === "processed") await flushRefunds().catch((e) => console.error("refund flush failed:", e)); // best-effort; the reconciler retries
+  if (result === "processed") {
+    await flushRefunds().catch((e) => console.error("refund flush failed:", e)); // best-effort; the reconciler retries
+    await kickEmails(); // e.g. "payment received" recorded by the transaction above
+  }
   return result;
 }
 
