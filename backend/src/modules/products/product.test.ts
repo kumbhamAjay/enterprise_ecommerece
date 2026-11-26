@@ -103,7 +103,8 @@ test("list: search, category subtree, price range, sort, pagination", async () =
   assert.equal((await list(`manufacturerId=${manufacturerId}`)).data[0].imageUrl, "https://img.test/a1.png");
 
   const p2 = await list(`q=${tag}&sort=price_asc&limit=2&page=2`);
-  assert.deepEqual(p2.meta, { page: 2, limit: 2, total: 3, totalPages: 2 });
+  const { page, limit, total, totalPages, hasMore, totalCapped } = p2.meta;
+  assert.deepEqual({ page, limit, total, totalPages, hasMore, totalCapped }, { page: 2, limit: 2, total: 3, totalPages: 2, hasMore: false, totalCapped: false });
   assert.deepEqual(names(p2), ["Beta Laptop"]);
   assert.equal((await call("GET", "/products?limit=1000", undefined, "")).status, 400);
 });

@@ -26,6 +26,9 @@ export type ProductDetail = Omit<ProductSummary, "imageUrl"> & {
 
 export type PageMeta = { page: number; limit: number; total: number; totalPages: number };
 export type Page<T> = { data: T[]; meta: PageMeta };
+// Product lists: exact total up to 10,000 (then totalCapped), cursor for the next page, total is null on cursor pages
+export type FeedMeta = { limit: number; total: number | null; totalPages: number | null; totalCapped: boolean; hasMore: boolean; nextCursor: string | null; sortedBy: string };
+export type Feed<T> = { data: T[]; meta: FeedMeta };
 
 export type User = {
   id: string;
@@ -56,6 +59,7 @@ export type ProductQuery = {
   sort?: string;
   page?: number;
   limit?: number;
+  cursor?: string;
 };
 
 export type InventoryItem = {

@@ -1,14 +1,23 @@
 "use client";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { qs } from "./format";
-import type { Address, Category, CheckoutPreview, EmailRow, EmailStats, InventoryItem, LedgerEntry, Manufacturer, Order, OrderListItem, Page, ProductDetail, ProductQuery, ProductSummary } from "./types";
+import type { Address, Category, CheckoutPreview, EmailRow, EmailStats, InventoryItem, LedgerEntry, Feed, Manufacturer, Order, OrderListItem, Page, ProductDetail, ProductQuery, ProductSummary } from "./types";
 
 export const useProducts = (q: ProductQuery) =>
   useQuery({
     queryKey: ["products", q],
     queryFn: () => api.page<Page<ProductSummary>>(`/api/products?${qs({ ...q })}`),
     placeholderData: keepPreviousData, // keep the old page on screen while the next loads
+  });
+
+// Storefront: "load more" with a cursor (keyset pagination): fast at any depth and stable while products are added
+export const useProductFeed = (q: Omit<ProductQuery, "page" | "cursor">) =>
+  useInfiniteQuery({
+    queryKey: ["products", "feed", q],
+    queryFn: ({ pageParam }) => api.page<Feed<ProductSummary>>(`/api/products?${qs({ ...q, cursor: pageParam })}`),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.meta.nextCursor ?? undefined,
   });
 
 export const useProduct = (id: string | null) =>

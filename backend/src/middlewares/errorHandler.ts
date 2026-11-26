@@ -9,6 +9,10 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof HttpError) {
     return res.status(err.status).json({ success: false, message: err.message, ...err.extra });
   }
+  // Overload protection: tell the client to back off instead of hanging or crashing.
+  const message = (err as { message?: string }).message ?? "";
+  if (/timeout exceeded when trying to connect/i.test(message)) return res.setHeader("Retry-After", "2").status(503).json({ success: false, message: "The server is busy. Please try again in a moment." });
+  if ((err as { code?: string }).code === "57014") return res.status(503).json({ success: false, message: "That request took too long. Try narrowing your search." }); // statement_timeout
   // Postgres constraint errors -> meaningful client errors (the DB is the source of truth for integrity)
   const code = (err as { code?: string }).code;
   if (code === "23505") return res.status(409).json({ success: false, message: "Already exists" });

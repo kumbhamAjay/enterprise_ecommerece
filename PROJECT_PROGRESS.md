@@ -108,3 +108,12 @@ Master scope: `PROJECT_DOC.md`. Update this file as modules complete.
 - Bull Board at `/api/admin/queues` (HTTP basic auth, user `admin`, `BULL_BOARD_PASSWORD`; 404 when unset). Admin UI: Emails tab (stats, status filter, retry, link to Bull Board).
 - Redis eviction policy must be `noeviction` (BullMQ refuses to trust anything else: evicting a queue key loses jobs). The local container now runs with `noeviction`; cache keys all carry TTLs. In production use two Redis instances (cache with an eviction policy, queues with `noeviction`).
 - Local Redis hung once (Docker Desktop's port proxy accepted connections but nothing answered): restarting Docker Desktop fixed it (`restart unless-stopped` + volume kept the data).
+
+## Module 9: search and performance (branch `feature/search-performance`)
+- Full write-up with before/after tables, k6 results and interview answers: `backend/PERFORMANCE.md`. Default shop page on 1M products: 2,769 ms -> ~2 ms; k6 (30 users, no cache): 1.7 -> 700 req/s, p95 22.7 s -> 86 ms.
+- Root cause: `COUNT(*) OVER()` forced a full scan. Fixed with bounded count (10,000 cap, UI shows "10,000+"), keyset/cursor pagination (`?cursor=`, `meta.nextCursor`; OFFSET only to 10,000 rows), partial composite indexes per sort/filter, relevance ranking only for <= 10,000 matches (`meta.sortedBy` says when it falls back to newest).
+- Pool: `PG_POOL_MAX` (10), connect timeout 5 s -> 503 + Retry-After, per-connection `statement_timeout` 15 s (-> 503), slow-query log (>= 250 ms, SQL text only), `GET /api/admin/diagnostics`. `npm test` sets `PG_CONNECT_TIMEOUT_MS=30000` (a burst of 20 serialized transactions otherwise trips the 503).
+- N+1 guard test counts queries (list = 2 for any page size, detail = 1, cart = 1). 94 tests green.
+- Frontend: storefront uses `useProductFeed` (infinite "Load more", "10,000+ pieces"); admin tables stay on page numbers.
+- Benchmark tooling: `backend/perf/{seed.sql,explain.ts,k6/}` (bench Postgres on :5433, `shopeasy-bench` container). Module 9 indexes are in `db/schema.sql`; already applied to the Supabase DB.
+- Not done / known: the pg deprecation warning "client.query() when already executing a query" (probably from `pool.query` internals + our wrapper, not investigated); the test process needs `--test-force-exit` for new test runs on some setups.

@@ -2,10 +2,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, X } from "lucide-react";
-import { useCategories, useManufacturers, useProducts } from "@/lib/hooks";
+import { useCategories, useManufacturers, useProductFeed } from "@/lib/hooks";
 import type { ProductQuery } from "@/lib/types";
 import { Filters } from "@/components/product/Filters";
-import { Pagination } from "@/components/product/Pagination";
 import { ProductCard, ProductCardSkeleton, gridClass } from "@/components/product/ProductCard";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
@@ -43,7 +42,6 @@ export function Listing() {
     maxPrice: sp.get("maxPrice") ?? undefined,
     inStock: sp.get("inStock") === "true" ? "true" : undefined,
     sort: sp.get("sort") ?? undefined,
-    page: Math.max(1, Number(sp.get("page")) || 1),
     limit: LIMIT,
   };
 
@@ -60,7 +58,9 @@ export function Listing() {
     [sp, router, pathname],
   );
 
-  const { data, isPending, isError, isPlaceholderData, refetch } = useProducts(query);
+  const { data, isPending, isError, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } = useProductFeed(query);
+  const items = data?.pages.flatMap((p) => p.data) ?? [];
+  const first = data?.pages[0]?.meta;
   const { data: categories } = useCategories();
   const { data: manufacturers } = useManufacturers();
   const [sheet, setSheet] = useState(false);
@@ -89,7 +89,8 @@ export function Listing() {
   ].filter(Boolean) as { label: string; clear: Partial<ProductQuery> }[];
 
   const filters = <Filters query={query} categories={categories} manufacturers={manufacturers} onChange={update} />;
-  const total = data?.meta.total ?? 0;
+  const total = first?.total ?? 0;
+  const totalLabel = first?.totalCapped ? `${total.toLocaleString()}+` : String(total);
 
   return (
     <Container className="py-12 lg:py-16">
@@ -112,7 +113,7 @@ export function Listing() {
           <Button variant="outline" size="sm" className="lg:hidden" onClick={() => setSheet(true)}>
             <SlidersHorizontal size={14} /> Filters
           </Button>
-          <p aria-live="polite" className="text-sm text-mute">{isPending ? "Loading…" : `${total} ${total === 1 ? "piece" : "pieces"}`}</p>
+          <p aria-live="polite" className="text-sm text-mute">{isPending ? "Loading…" : `${totalLabel} ${total === 1 && !first?.totalCapped ? "piece" : "pieces"}`}</p>
         </div>
         <label className="flex items-center gap-3 text-sm">
           <span className="eyebrow hidden sm:inline">Sort by</span>
@@ -141,14 +142,19 @@ export function Listing() {
             <EmptyState title="We couldn't load the collection" text="The catalog service didn't respond. Please try again." action={<Button onClick={() => refetch()}>Try again</Button>} />
           ) : isPending ? (
             <div className={gridClass.replace("xl:grid-cols-4", "xl:grid-cols-3")}>{Array.from({ length: 6 }, (_, i) => <ProductCardSkeleton key={i} />)}</div>
-          ) : data.data.length === 0 ? (
+          ) : items.length === 0 ? (
             <EmptyState title="Nothing matches" text="Try removing a filter or searching for something broader." action={<Button variant="outline" onClick={() => update({ q: undefined, categoryId: undefined, manufacturerId: undefined, minPrice: undefined, maxPrice: undefined, inStock: undefined })}>Clear filters</Button>} />
           ) : (
             <>
-              <div className={`${gridClass.replace("xl:grid-cols-4", "xl:grid-cols-3")} transition-opacity duration-300 ${isPlaceholderData ? "opacity-50" : ""}`}>
-                {data.data.map((p) => <ProductCard key={p.id} p={p} />)}
+              <div className={`${gridClass.replace("xl:grid-cols-4", "xl:grid-cols-3")} transition-opacity duration-300`}>
+                {items.map((p) => <ProductCard key={p.id} p={p} />)}
               </div>
-              <Pagination page={data.meta.page} totalPages={data.meta.totalPages} onChange={(p) => { update({ page: p }); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+              {hasNextPage && (
+                <div className="mt-12 flex flex-col items-center gap-3">
+                  <p className="text-xs text-mute">Showing {items.length.toLocaleString()} of {totalLabel}</p>
+                  <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>{isFetchingNextPage ? "Loading…" : "Load more"}</Button>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -156,7 +162,7 @@ export function Listing() {
 
       <Modal open={sheet} onClose={() => setSheet(false)} title="Filters" side="left">
         {filters}
-        <Button className="mt-6 w-full" onClick={() => setSheet(false)}>Show {total} {total === 1 ? "piece" : "pieces"}</Button>
+        <Button className="mt-6 w-full" onClick={() => setSheet(false)}>Show {totalLabel} {total === 1 && !first?.totalCapped ? "piece" : "pieces"}</Button>
       </Modal>
     </Container>
   );
