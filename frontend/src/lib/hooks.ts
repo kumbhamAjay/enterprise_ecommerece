@@ -2,7 +2,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { qs } from "./format";
-import type { Address, Category, CheckoutPreview, InventoryItem, LedgerEntry, Manufacturer, Order, OrderListItem, Page, ProductDetail, ProductQuery, ProductSummary } from "./types";
+import type { Address, Category, CheckoutPreview, EmailRow, EmailStats, InventoryItem, LedgerEntry, Manufacturer, Order, OrderListItem, Page, ProductDetail, ProductQuery, ProductSummary } from "./types";
 
 export const useProducts = (q: ProductQuery) =>
   useQuery({
@@ -59,3 +59,15 @@ export const useOrder = (id: string | null) =>
 
 export const useAdminOrders = (q: { q?: string; status?: string; page?: number; limit?: number }) =>
   useQuery({ queryKey: ["orders", "admin", q], queryFn: () => api.page<Page<OrderListItem>>(`/api/admin/orders?${qs({ ...q })}`), placeholderData: keepPreviousData });
+
+// ---- emails (admin) ----
+export const useEmailStats = () =>
+  useQuery({ queryKey: ["emails", "stats"], queryFn: () => api.get<EmailStats>("/api/admin/emails/stats"), refetchInterval: 10_000 });
+
+export const useEmails = (status: string, page: number) =>
+  useQuery({
+    queryKey: ["emails", "list", status, page],
+    queryFn: () => api.page<Page<EmailRow>>(`/api/admin/emails?${qs({ status: status || undefined, page, limit: 12 })}`),
+    placeholderData: keepPreviousData,
+    refetchInterval: 10_000, // statuses change in the background as workers send and retry
+  });

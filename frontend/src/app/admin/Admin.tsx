@@ -9,9 +9,10 @@ import { CategoriesAdmin } from "./CategoriesAdmin";
 import { ManufacturersAdmin } from "./ManufacturersAdmin";
 import { InventoryAdmin } from "./InventoryAdmin";
 import { OrdersAdmin } from "./OrdersAdmin";
+import { EmailsAdmin } from "./EmailsAdmin";
 import { useInventory } from "@/lib/hooks";
 
-const TABS = [["orders", "Orders"], ["products", "Products"], ["inventory", "Inventory"], ["categories", "Categories"], ["brands", "Brands"]] as const;
+const TABS = [["orders", "Orders"], ["products", "Products"], ["inventory", "Inventory"], ["categories", "Categories"], ["brands", "Brands"], ["emails", "Emails"]] as const;
 
 export function Admin() {
   const { status, allowed } = useRequireAuth(true);
@@ -56,6 +57,7 @@ export function Admin() {
         {tab === "inventory" && <InventoryAdmin />}
         {tab === "categories" && <CategoriesAdmin />}
         {tab === "brands" && <ManufacturersAdmin />}
+        {tab === "emails" && <EmailsAdmin />}
       </div>
     </Container>
   );
