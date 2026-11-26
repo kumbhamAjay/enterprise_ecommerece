@@ -1,0 +1,104 @@
+# Project Progress
+
+Master scope: `PROJECT_DOC.md`. Update this file as modules complete.
+
+## Completed
+
+- Backend scaffold: `backend/src/{config,modules,middlewares,utils}`, `app.ts`, `server.ts`.
+- Express app with `GET /api/health`.
+- Supabase Postgres connection via `pg` Pool (`config/db.ts`), verified with `SELECT NOW()` on startup.
+- `backend/db/schema.sql`: snapshot of users, roles, user_roles, addresses (+ seed roles).
+- Auth module: `POST /api/auth/{register,login,refresh,logout}`, `GET /api/auth/me`; `authenticate` + `requireRole` middlewares; `refresh_tokens` table.
+- Email verification (`/auth/verify-email`, `/auth/resend-verification`) and password reset (`/auth/forgot-password`, `/auth/reset-password`) via `one_time_tokens`; dev mailer prints links (`utils/mailer.ts`).
+- Users module (`/api/users/me`): profile update, change password, address CRUD with single default address.
+- Tests: `npm test` (68 integration tests: auth, users, catalog, inventory, cart, orders, payments, cache; real DB, each test file creates and deletes its own data). The DummyJSON import is verified manually (network + rate limit), not in `npm test`.
+- Swagger UI at `/api/docs` (raw spec `/api/openapi.json`), built in `backend/src/docs/openapi.ts`; request bodies are generated from the zod schemas. New endpoints must be added to that file.
+- Module 2 catalog: manufacturers, categories (hierarchy), products (CRUD, soft delete, images, search/filter/sort/pagination, DummyJSON bulk import). Reads public, writes `ADMIN`/`SUPER_ADMIN`. Endpoints under `/api/{manufacturers,categories,products}`; full list in Swagger.
+- Frontend (`frontend/`, Next.js 16 App Router + TypeScript + Tailwind v4 + TanStack Query), "ShopEasy" premium UI, port 5001. Pages: home, shop (URL-synced search/filters/sort/pagination), product detail (server-rendered), login, register, forgot/reset password, verify email, account (profile, addresses, security), admin catalog (products incl. create/edit/images/import, categories, brands).
+- Module 3 inventory: `inventory`, `stock_reservations`, `inventory_transactions` tables; reserve/release/confirm/expire services; admin stock list, adjust, stocktake, threshold, history ledger; low-stock alert (dev mailer) when stock crosses the threshold; public product API now exposes `stockStatus`/`stockLeft` and an `inStock=true` filter. Endpoints under `/api/inventory`. Expiry sweeper runs every 60 s in `server.ts`.
+- Inventory frontend: storefront "Sold out" / "Only N left" badges (card + detail), "In stock only" filter, admin Inventory tab (levels, low-stock filter + count badge on the tab, side panel with adjust / stocktake / alert level / paged history), Stock column in admin products, opening-stock field on the product form.
+- Module 4 cart (backend): `carts` (one per user) + `cart_items`; `/api/cart` get / clear, `/items` add / set / remove, `/merge` for guest carts. Totals come from one SQL query (window `SUM`), money stays a string. Tests in `cart.test.ts`.
+- Cart frontend: header bag button with live count, slide-in bag drawer, `/cart` page, "Add to bag" with quantity stepper on product pages (disabled when sold out, capped at stock). Guest bag in localStorage (`shopeasy.cart`) shown with live product data and merged into the account cart on sign-in; stock problems shown per line with a one-click fix. Checkout button is intentionally disabled until Module 5.
+- Module 5 checkout & orders: `POST /api/checkout` (needs `Idempotency-Key`), `GET /api/checkout/preview`, `/api/orders` (mine, detail, cancel), `/api/admin/orders` (list, status). Tables `orders`, `order_items`, `order_status_history`, `idempotency_keys`. Order state machine PENDING_PAYMENT -> PAID -> PROCESSING -> SHIPPED -> DELIVERED, with CANCELLED / REFUNDED. 11 tests in `order.test.ts`.
+- Orders frontend: `/checkout` (saved-address chips, billing address, idempotent submit), `/orders` history, `/orders/[id]` (tracker, payment-hold countdown, cancel/refund, timeline), admin Orders tab (search, status filter, side panel with next-step actions). "My orders" in the user menu and footer.
+- Module 6 payments (Stripe test mode, PaymentIntents + embedded Payment Element): `POST /api/payments/orders/:id/intent`, `/sync`, `POST /api/payments/webhook` (raw body, signature verified, deduplicated by event id), `POST /api/admin/payments/reconcile`. Tables `payments`, `refunds` (outbox), `stripe_events`. 12 offline tests in `payment.test.ts` (fake Stripe client, real signature verification) plus a one-off live run against the real Stripe test API (create intent, pay with `pm_card_visa`, sync, refund): all passed.
+- Payments frontend: `PaymentSection` (Stripe Payment Element themed to the site, confirm inline, then server-side sync) on the order page; payment and refund info on the order page and in the admin order panel.
+
+## Current implementation
+
+- Stack: Node, Express 5, TypeScript 7, `pg`, zod, bcrypt, jsonwebtoken, tsx.
+- Scripts: `npm run dev | build | start`.
+- Per-module layout: `<name>.routes / controller / service / repository / types .ts`.
+
+## In progress
+
+- Module 1 (auth/users) and Module 2 (catalog) are functionally complete. Modules 1-5 are complete (backend + frontend). Modules 1-7 are complete. Next: Module 8 (BullMQ background jobs + email: order confirmation, low-stock alerts, payment receipts), then Module 9 (search and performance). Inventory frontend is built.
+
+## Pending
+
+- Modules 1-10 per `PROJECT_DOC.md` section 5 (login/JWT/refresh, products, inventory, cart, orders, payments, Redis, BullMQ/email, search, admin).
+- Frontend (`frontend/` exists, nothing recorded yet).
+- Tests, migrations/schema SQL.
+
+## Technical decisions
+
+- Raw SQL with `pg` first; ORM later.
+- Supabase **Session pooler** (`aws-1-ap-northeast-2.pooler.supabase.com:5432`, user `postgres.<project-ref>`). The direct `db.<ref>.supabase.co` host is IPv6-only and fails on IPv4 networks.
+- DB password in `DATABASE_URL` must be percent-encoded (`@`=%40, `#`=%23, `!`=%21, `$`=%24).
+- `ssl: { rejectUnauthorized: false }` for Supabase.
+- `server.ts` must `import "dotenv/config"` first: imports are hoisted, otherwise `db.ts` builds the Pool before `.env` loads and `pg` falls back to `localhost`.
+- `.env` is git-ignored; secrets live only there. JWT secrets are still placeholders.
+- Access token: JWT HS256, 15 min, `sub`+`roles`. Refresh token: opaque random 32 bytes, SHA-256 hash stored, 7 days, rotated on use; reuse of a revoked token revokes all of that user's tokens (commit, not rollback, so the revoke persists).
+- Login returns the same 401 for unknown email / wrong password / inactive, and bcrypt-compares against a dummy hash for unknown emails (no timing leak).
+- Tokens are returned in the JSON body for now; move refresh token to an httpOnly cookie when the browser frontend is built.
+- One-time tokens (verify/reset): random, hash stored, single-use (marked used in the same transaction as the effect), new request voids older ones. Reset and password change revoke all refresh tokens.
+- `forgot-password` returns the same response whether or not the email exists.
+- Default address uniqueness is a partial unique index (`addresses_one_default`), not app code.
+- Email provider (Resend/Brevo) is deferred to Module 8; login does not yet require a verified email.
+- Tests use `NODE_ENV=test` so the mailer fills `outbox` instead of printing.
+- Catalog: money is `numeric(12,2)` (returned as a string); product delete is soft (`is_active=false`) because orders will reference products; ids are strings everywhere (bigint), including inside JSON aggregates (`::text`).
+- Product search = Postgres full-text (`tsvector` generated column + GIN, `websearch_to_tsquery`), category filter includes descendants via a recursive CTE, page total comes from `COUNT(*) OVER()`; offset pagination only (cursor/keyset pagination deferred until the dataset is large).
+- Import is an idempotent UPSERT keyed on `products.external_id` (`dummyjson:<id>`), bulk via `unnest` arrays; DummyJSON rate-limits (429 -> 503 with retry hint).
+- No admin-creation endpoint yet: grant the role in SQL (`INSERT INTO user_roles ... 'ADMIN'`), then log in again so the JWT carries it.
+- Constraint violations are mapped centrally in `errorHandler` (23505 -> 409, 23503 -> 409, 23514 -> 400).
+- Product images are URLs only; Supabase Storage upload comes later.
+- Frontend: `cacheComponents` was turned OFF (scaffold default is on) to keep the familiar server-component model; server pages use `fetch(..., { next: { revalidate: 60 } })`. Browser calls `/api/*` on its own origin, proxied by a Next rewrite to the Express API (`API_URL`, default `http://127.0.0.1:5000`), so no CORS config is needed. Use `127.0.0.1`, not `localhost`, because Node cannot resolve `localhost` on this machine (loopback line in /etc/hosts is commented out).
+- Frontend auth: access token in memory, refresh token in localStorage (`shopeasy.rt`). Refresh is single-flight + Web Locks across tabs, because refresh tokens rotate and reuse detection would otherwise log everyone out (React StrictMode double effects, parallel requests, two tabs). Route guards are client-side only; the API enforces the real checks. TODO for production: httpOnly cookie via a Next route handler.
+- Modals render in a portal on `document.body` (animated wrappers create stacking contexts that trapped them under the sticky header).
+- The 30-product DummyJSON sample catalog was imported into the Supabase DB (idempotent, `external_id` like `dummyjson:%`).
+- Frontend verified with a headless-Chrome end-to-end run (register, login, restore session on reload, addresses, admin create/import, validation, sign out, guest redirect, mobile filters); the script is not committed. No automated frontend tests yet.
+- Inventory anti-oversell, three layers: (1) one atomic conditional `UPDATE ... WHERE on_hand - reserved >= qty` (a concurrent writer waits for the row lock, then re-checks the WHERE under READ COMMITTED), (2) multi-item reservations lock rows in ascending product id (a verified deadlock fix: removing the sort produced `deadlock detected`), (3) `CHECK (reserved_quantity <= quantity_on_hand)` so the DB refuses to oversell even if app code is wrong. `withTransaction({ retries })` also retries 40001/40P01 with backoff.
+- `available = quantity_on_hand - reserved_quantity`. A reservation holds stock (reserved++), confirm = sale (on_hand--, reserved--), release/expire = reserved--. State changes go through `UPDATE ... WHERE status='ACTIVE' RETURNING`, so confirm/release/expire are idempotent and only one concurrent caller wins.
+- Stocktake (`PUT /stock`) uses `SELECT ... FOR UPDATE` (pessimistic locking) because the delta depends on the current value; everything else is a single atomic UPDATE. Optimistic locking (version column) was not needed and is not implemented.
+- Expiry sweep uses `FOR UPDATE SKIP LOCKED` so several instances can run it safely. ponytail: in-process timer, replace with BullMQ in Module 8.
+- Products created via the admin UI get inventory = 0 unless `stock` is sent (the admin product form does not send it yet). Imports never overwrite existing stock counts.
+- Low-stock alerts go to every ADMIN/SUPER_ADMIN via the dev mailer (console), once per downward threshold crossing.
+- Inventory UI: the stock panel resets its form when a different product is opened (a leftover reason once turned a restock into a damage). Admin-only queries wait until the user is confirmed admin (`enabled`), to avoid 401s for guests.
+- Cart validates stock but does NOT reserve it: reserving on add-to-cart would let abandoned carts hoard inventory. The hold happens at checkout (Module 5) via `inventory.reserve()`.
+- Cart mutations are serialized per cart: `INSERT ... ON CONFLICT (user_id) DO UPDATE` get-or-creates the cart AND row-locks it until commit, so read-check-write can't interleave (double clicks, two tabs). Contrast with inventory, which uses a single atomic conditional UPDATE because many buyers contend for one row.
+- Guest carts live in the browser and are merged on login. Merge keeps the LARGER quantity per product (not the sum) so retrying the same merge is idempotent; unavailable items are skipped and quantities clamped to stock, never an error.
+- Cart stores no price: it always shows the live price; the order (Module 5) must snapshot the price at checkout.
+- Tests must run one file at a time (`--test-concurrency=1`): the Supabase session pooler allows only 15 clients in total (`EMAXCONNSESSION`), and the app pool defaults to 10 per process. Keep dev server + tests under that limit.
+- Known trade-off (refresh-token rotation): if a page is torn down while a refresh is in flight (tab closed, hard navigation), the server has rotated the token but the browser never saved the new one; the next load then sends the old token and reuse detection revokes ALL sessions. A short grace window on the server (accept the immediately-previous token for a few seconds) is the usual fix; not implemented yet. Hit while scripting browser tests (`setViewport` reloads the page).
+- Checkout is ONE transaction: claim idempotency key, lock the cart row, reserve stock (`inventory.reserveInTx`, same client), snapshot prices into `order_items`, create the order, empty the cart. Any failure rolls back all of it, including the key (so a failed attempt can be retried with the same key). A concurrent duplicate blocks on the `idempotency_keys` unique index, then replays the first order (200 + `Idempotent-Replay: true`). Same key + different body = 422.
+- Orders keep snapshots (prices, names, both addresses as jsonb, customer email); order history survives account/product deletion (`ON DELETE SET NULL`). `CHECK (total = subtotal + shipping + tax)` and `line_total = unit_price * quantity` are enforced in the DB. Pricing rules (flat $9 shipping, free from $100, no tax) live in `orders/pricing.ts` in integer cents.
+- State changes: lock the order row (`SELECT ... FOR UPDATE`), check `RULES` (who may move which status), run stock side effects in the same transaction (PAID = confirm reservations (refused if the hold lapsed), CANCELLED = release, REFUNDED before shipping = restock via a RETURN ledger row), then write status + history. Repeating a transition to the current status is a no-op. Customers can cancel unpaid orders or get a simulated refund while PAID; later stages are admin-only.
+- Unpaid orders lapse with their stock hold: sweeper every 60 s (`orders.expireStale`, `FOR UPDATE SKIP LOCKED`). A "payment" after the hold lapsed is refused with 409 rather than overselling (Module 6 must refund that case).
+- Admin "Confirm payment received" is the manual stand-in for Module 6: it calls the same transition the payment webhook will.
+- Order endpoints return 404 (not 403) for other users' orders so ids can't be probed.
+- Payments: the browser never proves payment. Truth comes from Stripe: the webhook (primary), or our server calling Stripe itself (`/sync`, reconciler). Card data goes browser -> Stripe only (PCI scope stays with Stripe); we store references and amounts.
+- Idempotency at four layers: Stripe request keys (`order-<id>-attempt-<n>` for intents, `refund-<refundId>` for refunds), webhook event id in `stripe_events` (claimed in the SAME transaction as the effect: failure rolls both back, we return 500, Stripe redelivers), state checks (a `SUCCEEDED` payment is never re-applied; events may arrive out of order), and `UNIQUE(payment_id, reason)` on refunds.
+- A payment that can't be applied (order expired/cancelled/already paid, or only part of the stock hold lapsed) is NOT lost: `settlePaymentInTx` uses a SAVEPOINT so half-confirmed stock is undone without aborting the webhook transaction, the payment is marked `SUCCEEDED, applied=false`, and a LATE_PAYMENT refund is queued. Amount mismatches are never applied or refunded automatically (flagged for review).
+- Refund outbox: the intent to refund is written inside the business transaction (order -> REFUNDED), executed right after, and retried by the reconciler (every 5 min when Stripe is configured) up to 10 times.
+- Local dev needs the Stripe CLI to deliver webhooks (`stripe listen --forward-to localhost:5000/api/payments/webhook`, copy the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`). Without it the order still gets paid through `/sync`, which the checkout page calls right after the card succeeds.
+- Required env (backend): `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` (returned to the browser by the intent endpoint, so the frontend needs no Stripe env), `STRIPE_WEBHOOK_SECRET`.
+- Module 7 Redis (local Docker container `shopeasy-redis`: redis:7-alpine, AOF persistence, 256 MB, `volatile-lru`, bound to 127.0.0.1; `docker start shopeasy-redis` after a reboot, it has `--restart unless-stopped`). `REDIS_URL` (default `redis://127.0.0.1:6379`), `REDIS_KEY_PREFIX` (default `shopeasy:`; tests use `test:`).
+- Cache-aside for product list/search (60 s), product detail (120 s), categories and brands (600 s). Keys embed a catalog VERSION; every write bumps it AFTER the DB commit (`afterWrite`), orphaning all old keys in O(1) with no SCAN/DEL. A reader reads the version BEFORE loading, so a slow reader that overlaps a write stores under the old version and can never poison the cache. Errors are not cached. Stock badges in cached responses can lag by the TTL; admin stock changes invalidate at once; carts, checkout and reservations always read the database. `X-Cache: HIT|MISS|COALESCED|BYPASS` on cached GETs; `GET /api/admin/cache` (stats) and `POST /api/admin/cache/flush`.
+- Stampede protection: in-process single-flight + a Redis `SET NX PX` lock across instances (waiters poll ~1 s, then fall back to loading themselves), and +-10% TTL jitter.
+- Rate limiting: sliding-window log in a sorted set, one atomic Lua script (time from Redis `TIME`). Limits: login 10 / 15 min per IP+email, register 20 / h per IP, forgot-password 5 / h, reset 10 / h, refresh 120 / min, checkout 20 / min and payment intent 30 / min per user. 429 + `Retry-After`/`RateLimit-*`. `RATE_LIMIT_DISABLED=1` switches it off (set by `npm test`). Express `trust proxy` = `loopback`, so the real client IP comes from the Next proxy only.
+- Access-token revocation: one `revoked:<userId>` timestamp (16 min TTL) set on password change/reset and token-reuse detection; `authenticate` rejects tokens with `iat` before it, so sessions end immediately instead of after 15 min. Strict `<` on a 1-second `iat`, so a login in the same second still works (and a token issued in that same second before the change slips through).
+- Redis is an optimisation, never a dependency: every call goes through `safe()` (fail fast, circuit breaker 5 s). Cache -> straight to the DB (`BYPASS`); rate limit and revocation FAIL OPEN (availability over strictness; a revocation can be missed for <= 15 min while Redis is down). Verified by a test that breaks the client.
+- `withLock` (SET NX PX + owner-checked release) guards the payment reconciler across instances. Known limit, demonstrated in a test: if the holder outlives the TTL a second holder enters. It buys efficiency, not safety; correctness stays with DB constraints.
+- Project renamed Atelier -> ShopEasy (UI, titles, Swagger, storage keys `shopeasy.rt` / `shopeasy.cart`, Redis prefix `shopeasy:`, Docker container `shopeasy-redis`). The Docker VOLUME keeps its old name `atelier-redis-data` (Docker volumes can't be renamed); it still holds the data.
+- Product image uploads (Cloudinary, signed direct uploads): `POST /api/admin/uploads/sign` returns a short-lived signature (folder `shopeasy/products` and allowed formats are part of the signature); the browser uploads straight to Cloudinary, so the API never handles file bytes and the API secret never leaves the server. Config: `CLOUDINARY_URL` or `CLOUDINARY_CLOUD_NAME` + `CLOUDINARY_API_KEY` + `CLOUDINARY_API_SECRET`. `product_images.public_id` stores the asset id; deleting an image also deletes the stored file (best-effort: a failed remote delete leaves an orphan but never fails the request); `POST /api/admin/uploads/discard` removes an unsaved upload (also called when the admin removes it or cancels the form). A `publicId` is accepted only if it lives in our folder AND the URL is in our cloud; plain pasted/imported URLs still work. Frontend: drag-and-drop uploader with per-file progress in the product form; `lib/image.ts` adds `f_auto,q_auto,c_limit,w_N` to Cloudinary URLs so thumbnails download small WebP/AVIF files.
+- Test infra fix: since Module 7 every test process opened a Redis socket and never closed it, so `npm test` hung after the first file. In `NODE_ENV=test` the Redis socket is now `unref()`ed.
