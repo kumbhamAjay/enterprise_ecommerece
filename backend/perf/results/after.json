@@ -1,0 +1,262 @@
+{
+  "01 newest, page 1": {
+    "totalMs": 2.48,
+    "countMs": 2.3,
+    "pageMs": 0.18,
+    "buffers": 146,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "02 newest, DEEP (row 59,989 onward)": {
+    "totalMs": 0.12,
+    "countMs": 0,
+    "pageMs": 0.12,
+    "buffers": 146,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "03 price low->high, page 1": {
+    "totalMs": 1.24,
+    "countMs": 1.12,
+    "pageMs": 0.12,
+    "buffers": 146,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_price_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "price_asc",
+    "matches": 10001
+  },
+  "04 name A-Z, page 1": {
+    "totalMs": 1.14,
+    "countMs": 1.05,
+    "pageMs": 0.09,
+    "buffers": 130,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_name_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "name",
+    "matches": 10001
+  },
+  "05 search rare: '400000' (1 match)": {
+    "totalMs": 10.77,
+    "countMs": 0.01,
+    "pageMs": 10.76,
+    "buffers": 61,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_search_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "relevance",
+    "matches": 1
+  },
+  "05c relevance on a small set: 'oak' in a leaf category": {
+    "totalMs": 10.51,
+    "countMs": 5.12,
+    "pageMs": 5.39,
+    "buffers": 16684,
+    "removed": 1,
+    "sort": "quicksort",
+    "indexes": [
+      "product_categories_cat_product_idx",
+      "products_pkey",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "relevance",
+    "matches": 0
+  },
+  "05b search medium: 'walnut stool'": {
+    "totalMs": 7.21,
+    "countMs": 6.51,
+    "pageMs": 0.7,
+    "buffers": 821,
+    "removed": 672,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "06 search common: 'walnut'": {
+    "totalMs": 10.26,
+    "countMs": 10.04,
+    "pageMs": 0.22,
+    "buffers": 581,
+    "removed": 433,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "07 search very common: 'premium'": {
+    "totalMs": 4.25,
+    "countMs": 4.14,
+    "pageMs": 0.11,
+    "buffers": 153,
+    "removed": 9,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "08 leaf category, newest": {
+    "totalMs": 8.79,
+    "countMs": 6.14,
+    "pageMs": 2.65,
+    "buffers": 10730,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "product_categories_cat_product_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 4075
+  },
+  "09 root category (+descendants), newest": {
+    "totalMs": 20.9,
+    "countMs": 20.51,
+    "pageMs": 0.39,
+    "buffers": 592,
+    "removed": 1,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "product_categories_pkey",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "10 brand filter, newest": {
+    "totalMs": 0.5,
+    "countMs": 0.42,
+    "pageMs": 0.08,
+    "buffers": 121,
+    "removed": 6,
+    "sort": "quicksort",
+    "indexes": [
+      "products_mfr_newest_idx",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [
+      "manufacturers"
+    ],
+    "sortedBy": "newest",
+    "matches": 3274
+  },
+  "11 price 100-120, newest": {
+    "totalMs": 1.56,
+    "countMs": 1.3,
+    "pageMs": 0.26,
+    "buffers": 840,
+    "removed": 691,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "12 in stock only, newest": {
+    "totalMs": 4.2,
+    "countMs": 4.08,
+    "pageMs": 0.12,
+    "buffers": 161,
+    "removed": 3,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "inventory_pkey",
+      "manufacturers_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "newest",
+    "matches": 10001
+  },
+  "13 combo: root category + 'oak' + price<=200, price asc": {
+    "totalMs": 25.95,
+    "countMs": 25.5,
+    "pageMs": 0.45,
+    "buffers": 789,
+    "removed": 569,
+    "sort": "quicksort",
+    "indexes": [
+      "products_price_idx",
+      "product_categories_pkey",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [],
+    "sortedBy": "price_asc",
+    "matches": 3088
+  }
+}

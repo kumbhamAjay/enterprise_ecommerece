@@ -324,3 +324,15 @@ CREATE TABLE IF NOT EXISTS email_log (
 );
 CREATE INDEX IF NOT EXISTS email_log_dispatch_idx ON email_log (priority, id) WHERE status = 'PENDING';
 CREATE INDEX IF NOT EXISTS email_log_created_idx  ON email_log (created_at DESC);
+
+-- ================= Module 9: indexes for search and listing at scale (measured on 1,000,000 products, see PERFORMANCE.md) =================
+-- One index per sort, each ending in id (the keyset tie-breaker), restricted to the rows the shop shows (active products).
+DROP INDEX IF EXISTS products_active_price_idx;                 -- superseded by (price, id)
+CREATE INDEX IF NOT EXISTS products_price_idx      ON products (price, id) WHERE is_active;
+CREATE INDEX IF NOT EXISTS products_name_idx       ON products (name, id)  WHERE is_active;
+-- brand filter + newest first: seeks to the brand, then reads already in order (also serves the manufacturer_id foreign key)
+DROP INDEX IF EXISTS products_manufacturer_idx;
+CREATE INDEX IF NOT EXISTS products_mfr_newest_idx ON products (manufacturer_id, created_at DESC, id DESC) WHERE is_active;
+-- category filter: both columns in the index, so "is this product in these categories" never touches the table
+DROP INDEX IF EXISTS product_categories_category_idx;
+CREATE INDEX IF NOT EXISTS product_categories_cat_product_idx ON product_categories (category_id, product_id);

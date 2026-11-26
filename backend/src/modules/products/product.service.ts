@@ -6,17 +6,95 @@ import { afterWrite, cached, catalogKey, hashOf } from "../../utils/cache";
 import { slugify } from "../../utils/slug";
 import * as inventory from "../inventory/inventory.repository";
 import * as repo from "./product.repository";
+import { KEYSET, type KeysetSort } from "./product.repository";
 import type { CreateProductInput, ListQuery, UpdateProductInput } from "./product.types";
 
 const notFound = () => new HttpError(404, "Product not found");
 
 // Reads are cache-aside. Stock badges inside these responses can lag by up to the TTL: browsing may be slightly stale,
 // but carts, checkout and reservations always read the database, so correctness never depends on this cache.
+const COUNT_CAP = 10_000; // totals are exact up to here, then "10,000+" (counting a million rows just to print a number is waste)
+const MAX_OFFSET = 10_000; // page-number navigation stops here; beyond it clients use the cursor
+const RELEVANCE_MAX = 1_000; // relevance results are reachable up to here
+
+// The cursor remembers WHERE the last page ended (sort + last row's values) and a hash of the filters it belongs to,
+// so a cursor can't be replayed against a different search.
+type Cursor = { s: KeysetSort | "relevance"; v?: [string, string]; o?: number; h: string };
+const encodeCursor = (c: Cursor) => Buffer.from(JSON.stringify(c)).toString("base64url");
+function decodeCursor(raw: string, h: string): Cursor {
+  try {
+    const c = JSON.parse(Buffer.from(raw, "base64url").toString()) as Cursor;
+    const okSort = c.s === "relevance" || c.s in KEYSET;
+    if (!okSort || c.h !== h || (c.s === "relevance" ? !Number.isInteger(c.o) || c.o! < 0 : !Array.isArray(c.v) || c.v.length !== 2)) throw new Error();
+    return c;
+  } catch {
+    throw new HttpError(400, "Invalid cursor");
+  }
+}
+
 export async function list(q: ListQuery) {
-  return cached(await catalogKey(`products:list:${hashOf(q)}`), 60, async () => {
-    const { items, total } = await repo.listProducts(pool, q);
-    return { items, meta: { page: q.page, limit: q.limit, total, totalPages: Math.ceil(total / q.limit) } };
+  return cached(await catalogKey(`products:list:${hashOf(q)}`), 60, () => listUncached(q));
+}
+
+async function listUncached(q: ListQuery) {
+  const categoryIds = q.categoryId ? await cached(await catalogKey(`categories:desc:${q.categoryId}`), 600, () => repo.descendantCategoryIds(pool, q.categoryId!)) : undefined;
+  const f = repo.buildFilters(q, categoryIds);
+  const h = hashOf({ q: q.q, c: q.categoryId, m: q.manufacturerId, lo: q.minPrice, hi: q.maxPrice, st: q.inStock });
+  const requested = q.sort ?? (q.q ? "relevance" : "newest");
+
+  let sort: KeysetSort | "relevance";
+  let total: number | null = null;
+  let capped = false;
+  let after: [string, string] | undefined;
+  let offset = 0;
+  const cursor = q.cursor ? decodeCursor(q.cursor, h) : undefined;
+
+  if (cursor) {
+    sort = cursor.s; // continuing: the first page already decided the sort and counted, so this request does neither
+    if (cursor.s === "relevance") offset = cursor.o!;
+    else after = cursor.v;
+  } else {
+    const n = await repo.countBounded(pool, f, COUNT_CAP + 1);
+    capped = n > COUNT_CAP;
+    total = Math.min(n, COUNT_CAP);
+    // Ranking needs every match's text; for a huge match set (one very common word) that is the slowest thing we can ask of
+    // Postgres. Past the cap we order by newest instead: bounded cost, and ranking among 10,000+ near-identical hits means little.
+    sort = requested === "relevance" && (!q.q || capped) ? "newest" : requested;
+    offset = (q.page - 1) * q.limit;
+    if (offset + q.limit > (sort === "relevance" ? RELEVANCE_MAX : MAX_OFFSET))
+      throw new HttpError(400, "That page is too deep. Use the cursor from the previous page, or narrow your search.");
+  }
+
+  const rows = await repo.listRows(pool, f, { sort, after, offset, limit: q.limit }).catch((e) => {
+    if (["22P02", "22007", "22003", "22001"].includes(e?.code)) throw new HttpError(400, "Invalid cursor"); // a tampered cursor value failed to cast
+    throw e;
   });
+  const hasMore = rows.length > q.limit;
+  const page = rows.slice(0, q.limit);
+  const last = page.at(-1);
+  let nextCursor: string | null = null;
+  if (hasMore && last) {
+    if (sort === "relevance") {
+      if (offset + q.limit < RELEVANCE_MAX) nextCursor = encodeCursor({ s: sort, o: offset + q.limit, h });
+    } else {
+      const col = KEYSET[sort].col.slice(2); // "p.price" -> "price"
+      nextCursor = encodeCursor({ s: sort, v: [String(col === "created_at" ? last._created : last[col]), last.id], h });
+    }
+  }
+  const items = page.map(({ _created, ...r }) => r);
+  return {
+    items,
+    meta: {
+      ...(cursor ? {} : { page: q.page }),
+      limit: q.limit,
+      total, // null on cursor requests: the client keeps the total from the first page
+      totalPages: total === null ? null : Math.ceil(total / q.limit),
+      totalCapped: capped,
+      hasMore,
+      nextCursor,
+      sortedBy: sort, // tells the client if relevance fell back to newest
+    },
+  };
 }
 
 export async function get(id: string) {

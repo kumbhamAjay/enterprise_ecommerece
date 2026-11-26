@@ -9,55 +9,85 @@ const STOCK_STATUS = `CASE WHEN ${AVAILABLE} <= 0 THEN 'OUT_OF_STOCK' WHEN ${AVA
 const STOCK_LEFT = `CASE WHEN ${AVAILABLE} > 0 AND ${AVAILABLE} <= i.low_stock_threshold THEN ${AVAILABLE} END`;
 const STOCK_COLS = `${STOCK_STATUS} AS "stockStatus", ${STOCK_LEFT} AS "stockLeft"`;
 
-const SORTS = {
-  newest: "p.created_at DESC, p.id DESC",
-  price_asc: "p.price ASC, p.id ASC",
-  price_desc: "p.price DESC, p.id ASC",
-  name: "p.name ASC, p.id ASC",
+// ---------------------------------------------------------------------------------------------------------------------
+// Listing. Three rules make it fast at a million rows (see PERFORMANCE.md):
+//  1. NO COUNT(*) OVER(): a window count must read every matching row, which defeats LIMIT. Counting is a separate,
+//     BOUNDED query (stops at COUNT_CAP + 1).
+//  2. KEYSET pagination: "rows after the last one you saw" walks an index, so page 5,000 costs the same as page 1
+//     (OFFSET reads and discards every skipped row).
+//  3. Every sort has an index that matches it exactly: (sort column, id) restricted to active products.
+// ---------------------------------------------------------------------------------------------------------------------
+export type KeysetSort = "newest" | "price_asc" | "price_desc" | "name";
+export const KEYSET: Record<KeysetSort, { order: string; cmp: "<" | ">"; col: string; cast: string }> = {
+  newest: { order: "p.created_at DESC, p.id DESC", cmp: "<", col: "p.created_at", cast: "timestamptz" },
+  price_asc: { order: "p.price ASC, p.id ASC", cmp: ">", col: "p.price", cast: "numeric" },
+  price_desc: { order: "p.price DESC, p.id DESC", cmp: "<", col: "p.price", cast: "numeric" },
+  name: { order: "p.name ASC, p.id ASC", cmp: ">", col: "p.name", cast: "text" },
 };
 
-// One query builds the whole page: filters are parameterized, no N+1 (image is a subselect).
-export async function listProducts(db: Db, q: ListQuery) {
+export type Filters = { where: string[]; params: unknown[]; rank?: string };
+
+// category + all descendants, resolved separately (tiny query) so the planner gets a concrete id list, not a recursive CTE it can't estimate
+export async function descendantCategoryIds(db: Db, id: string): Promise<string[]> {
+  const { rows } = await db.query(
+    `WITH RECURSIVE cat AS (SELECT id FROM categories WHERE id = $1 UNION SELECT c.id FROM categories c JOIN cat ON c.parent_id = cat.id) SELECT id FROM cat`,
+    [id],
+  );
+  return rows.map((r) => r.id);
+}
+
+export function buildFilters(q: ListQuery, categoryIds?: string[]): Filters {
   const params: unknown[] = [];
   const add = (v: unknown) => (params.push(v), `$${params.length}`);
   const where = ["p.is_active"];
-  let cte = "";
-  let rank = "";
-
-  if (q.categoryId) {
-    // Recursive CTE: the category plus every descendant (UNION also stops accidental cycles)
-    cte = `WITH RECURSIVE cat AS (
-      SELECT id FROM categories WHERE id = ${add(q.categoryId)}
-      UNION SELECT c.id FROM categories c JOIN cat ON c.parent_id = cat.id) `;
-    where.push(`EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (SELECT id FROM cat))`);
-  }
+  let rank: string | undefined;
+  if (categoryIds) where.push(`EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id = ANY(${add(categoryIds)}::bigint[]))`);
   if (q.q) {
     const ts = `websearch_to_tsquery('english', ${add(q.q)})`; // GIN index on search_vector
     where.push(`p.search_vector @@ ${ts}`);
-    rank = `ts_rank(p.search_vector, ${ts}) DESC, `;
+    rank = `ts_rank(p.search_vector, ${ts})`;
   }
   if (q.inStock) where.push(`${AVAILABLE} > 0`);
   if (q.manufacturerId) where.push(`p.manufacturer_id = ${add(q.manufacturerId)}`);
   if (q.minPrice !== undefined) where.push(`p.price >= ${add(q.minPrice)}`);
   if (q.maxPrice !== undefined) where.push(`p.price <= ${add(q.maxPrice)}`);
+  return { where, params, rank };
+}
 
-  const order =
-    q.sort === "relevance" || (!q.sort && q.q)
-      ? `${rank}${SORTS.newest}` // relevance without a search term falls back to newest
-      : SORTS[(q.sort as keyof typeof SORTS) ?? "newest"];
-  const limit = add(q.limit);
-  const offset = add((q.page - 1) * q.limit);
+// Bounded count: reads at most `cap` matching rows, so "1,000,000 matches" costs the same as "10,001 matches".
+export function buildCountQuery(f: Filters, cap: number) {
+  return { text: `SELECT count(*)::int AS n FROM (SELECT 1 FROM products p LEFT JOIN inventory i ON i.product_id = p.id WHERE ${f.where.join(" AND ")} LIMIT ${cap}) t`, params: f.params };
+}
+export async function countBounded(db: Db, f: Filters, cap: number): Promise<number> {
+  const { text, params } = buildCountQuery(f, cap);
+  return (await db.query(text, params)).rows[0].n;
+}
 
-  const { rows } = await db.query(
-    `${cte}SELECT p.id, p.sku, p.name, p.slug, p.price, ${MANUFACTURER} AS manufacturer, ${STOCK_COLS},
-            (SELECT url FROM product_images i WHERE i.product_id = p.id ORDER BY position, id LIMIT 1) AS "imageUrl",
-            COUNT(*) OVER() AS total
+export type RowsOpts = { sort: KeysetSort | "relevance"; after?: [string, string]; offset: number; limit: number };
+
+// Fetches limit + 1 rows: the extra row only tells us whether there is a next page (no count needed).
+export function buildRowsQuery(f: Filters, o: RowsOpts): { text: string; params: unknown[] } {
+  const params = [...f.params];
+  const add = (v: unknown) => (params.push(v), `$${params.length}`);
+  const where = [...f.where];
+  let order: string;
+  if (o.sort === "relevance") {
+    order = `${f.rank} DESC, p.created_at DESC, p.id DESC`;
+  } else {
+    const k = KEYSET[o.sort];
+    order = k.order;
+    if (o.after) where.push(`(${k.col}, p.id) ${k.cmp} (${add(o.after[0])}::${k.cast}, ${add(o.after[1])}::bigint)`); // "after the last row you saw"
+  }
+  const text = `SELECT p.id, p.sku, p.name, p.slug, p.price, p.created_at::text AS "_created", ${MANUFACTURER} AS manufacturer, ${STOCK_COLS},
+            (SELECT url FROM product_images i WHERE i.product_id = p.id ORDER BY position, id LIMIT 1) AS "imageUrl"
      FROM products p LEFT JOIN manufacturers m ON m.id = p.manufacturer_id LEFT JOIN inventory i ON i.product_id = p.id
      WHERE ${where.join(" AND ")}
-     ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`,
-    params,
-  );
-  return { items: rows.map(({ total, ...r }) => r), total: rows[0] ? Number(rows[0].total) : 0 };
+     ORDER BY ${order} LIMIT ${add(o.limit + 1)} OFFSET ${add(o.offset)}`;
+  return { text, params };
+}
+export async function listRows(db: Db, f: Filters, o: RowsOpts) {
+  const { text, params } = buildRowsQuery(f, o);
+  return (await db.query(text, params)).rows as (Record<string, any> & { _created: string; id: string })[];
 }
 
 export async function getProduct(db: Db, id: string, onlyActive: boolean) {

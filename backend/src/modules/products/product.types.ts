@@ -31,6 +31,7 @@ export const listQuerySchema = z.object({
   sort: z.enum(["relevance", "newest", "price_asc", "price_desc", "name"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().max(600).optional(), // opaque; from meta.nextCursor of the previous page (keyset pagination)
 });
 
 export const importSchema = z.object({ limit: z.number().int().min(1).max(100).default(30) });

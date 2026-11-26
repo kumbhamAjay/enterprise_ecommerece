@@ -56,7 +56,7 @@ const catalogPaths = {
   ...crud("Categories", "categories", category.categorySchema, category.updateCategorySchema, "category"),
   "/api/products": {
     get: {
-      ...op({ tag: "Products", summary: "Search / filter / sort / paginate (category filter includes subcategories; q uses full-text search)", res: { 200: ok("{ data: [...], meta: { page, limit, total, totalPages } }") } }),
+      ...op({ tag: "Products", summary: "Search / filter / sort / paginate (category filter includes subcategories; q uses full-text search)", res: { 200: ok("{ data: [...], meta: { page?, limit, total|null, totalPages|null, totalCapped, hasMore, nextCursor, sortedBy } }. Pass ?cursor=<meta.nextCursor> for the next page (keyset pagination: fast at any depth). total is exact up to 10,000, then totalCapped=true. page= works up to 10,000 rows deep, beyond that 400.") } }),
       parameters: queryParams(product.listQuerySchema),
     },
     post: op({ tag: "Products", summary: "Create product (with categories and images)", body: product.createProductSchema, admin: true, res: { 201: ok(), 409: err("SKU or slug already exists") } }),
@@ -103,6 +103,9 @@ const orderPaths = {
 };
 
 const emailPaths = {
+  "/api/admin/diagnostics": {
+    get: op({ tag: "Admin", summary: "DB pool, query counts, cache and process health (admin)", auth: true, res: { 200: ok("{ db, cache, process }") } }),
+  },
   "/api/admin/emails": {
     get: { ...op({ tag: "Emails", summary: "Email log (the outbox): every email we intended to send, with status, attempts and last error", admin: true, res: { 200: ok("{ data, meta }") } }),
       parameters: [{ name: "status", in: "query", required: false, schema: { type: "string", enum: ["PENDING", "SENT", "FAILED"] } }, { name: "page", in: "query", required: false, schema: { type: "integer" } }, { name: "limit", in: "query", required: false, schema: { type: "integer" } }] },

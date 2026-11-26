@@ -4,7 +4,7 @@
   "description": "",
   "main": "dist/server.js",
   "scripts": {
-    "test": "NODE_ENV=test RATE_LIMIT_DISABLED=1 REDIS_KEY_PREFIX=test: tsx --test --test-concurrency=1 src/**/*.test.ts",
+    "test": "NODE_ENV=test PG_CONNECT_TIMEOUT_MS=30000 RATE_LIMIT_DISABLED=1 REDIS_KEY_PREFIX=test: tsx --test --test-concurrency=1 src/**/*.test.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
