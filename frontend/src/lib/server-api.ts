@@ -1,5 +1,6 @@
 // Server Components talk to the API directly (absolute URL) and cache for `revalidate` seconds.
-const API_URL = process.env.API_URL ?? "http://127.0.0.1:5000";
+// Accepts "http://host:port" or a bare "host:port" (what Render's private network gives us)
+const API_URL = (process.env.API_URL ?? "http://127.0.0.1:5000").replace(/^(?!https?:\/\/)/, "http://");
 
 export async function serverGet<T>(path: string, revalidate = 60): Promise<T | null> {
   try {

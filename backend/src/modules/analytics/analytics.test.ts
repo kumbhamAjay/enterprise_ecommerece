@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import type { Server } from "node:http";
 import app from "../../app";
 import { pool } from "../../config/db";
+import { getRedis, resetBreaker } from "../../config/redis";
 
 // Reports are checked over a window in 2001, so real or other tests' orders can never leak into the numbers.
 const tag = "an" + Math.random().toString(36).slice(2, 8);
@@ -20,6 +21,7 @@ const call = async (method: string, path: string, body?: object, token = tk.admi
   return { status: r.status, body: r.status === 204 ? null : await r.json() };
 };
 let n = 0;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function order(user: string | null, status: string, total: number, paidAt: string | null, items: { sku: string; name: string; qty: number; price: number }[] = []) {
   const r = await pool.query(
     `INSERT INTO orders (order_number, user_id, customer_email, status, subtotal, total, shipping_address, billing_address, paid_at, placed_at)
@@ -31,6 +33,10 @@ async function order(user: string | null, status: string, total: number, paidAt:
 const refresh = () => call("POST", "/admin/analytics/refresh");
 
 before(async () => {
+  // server.ts connects to Redis at boot; here we do the same. Otherwise the first request hits a half-open connection, trips the
+  // 5 s circuit breaker, and a session revocation made inside that window is (by design) skipped.
+  for (let i = 0; i < 30 && getRedis().status !== "ready"; i++) await sleep(100);
+  resetBreaker();
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as any).port}/api`;
   for (const e of Object.values(emails)) await call("POST", "/auth/register", { firstName: "T", email: e, password }, "");
@@ -143,6 +149,7 @@ test("disabling an account ends its sessions immediately, and enabling restores 
   const loginRes = await fetch(base + "/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: emails.other, password }) });
   const { accessToken, refreshToken } = (await loginRes.json()).data;
   assert.equal((await call("GET", "/orders", undefined, accessToken)).status, 200);
+  await sleep(1100); // token revocation has 1-second resolution (iat): a token minted in the same second as the ban would survive
 
   const off = await call("PATCH", `/admin/users/${uid.other}/status`, { isActive: false });
   assert.equal(off.status, 200, JSON.stringify(off.body));
@@ -175,6 +182,7 @@ test("who may do what: admins manage customers only; a super admin manages staff
 
 test("changing roles: audited, effective right away (the old token is rejected, the new one carries the new role)", async () => {
   const oldToken = tk.cust2;
+  await sleep(1100); // see above: revocation compares whole seconds
   const r = await call("PUT", `/admin/users/${uid.cust2}/roles`, { roles: ["CUSTOMER", "ADMIN", "ADMIN"] }, tk.sup);
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.data.roles, ["ADMIN", "CUSTOMER"]);
