@@ -1,0 +1,209 @@
+{
+  "01 newest, page 1": {
+    "ms": 2769.45,
+    "planMs": 0.37,
+    "hit": 4412945,
+    "read": 491868,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": []
+  },
+  "02 newest, page 5000 (OFFSET 59,988)": {
+    "ms": 1631.27,
+    "planMs": 0.26,
+    "hit": 4626537,
+    "read": 519432,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": []
+  },
+  "03 price low->high, page 1": {
+    "ms": 2800.08,
+    "planMs": 0.27,
+    "hit": 4414392,
+    "read": 489294,
+    "removed": 0,
+    "sort": "quicksort",
+    "indexes": [
+      "products_active_price_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": []
+  },
+  "04 name A-Z, page 1": {
+    "ms": 2032.27,
+    "planMs": 0.25,
+    "hit": 3942697,
+    "read": 20903,
+    "removed": 6701,
+    "sort": "quicksort",
+    "indexes": [
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [
+      "Seq Scan(products)"
+    ]
+  },
+  "05 search 'walnut stool' (~550 matches)": {
+    "ms": 42.85,
+    "planMs": 0.26,
+    "hit": 82136,
+    "read": 0,
+    "removed": 322,
+    "sort": "quicksort",
+    "indexes": [
+      "products_search_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": []
+  },
+  "06 search 'walnut' (~33k matches)": {
+    "ms": 108.5,
+    "planMs": 0.26,
+    "hit": 130843,
+    "read": 33345,
+    "removed": 224,
+    "sort": "quicksort",
+    "indexes": [
+      "products_search_idx",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [
+      "Seq Scan(manufacturers)"
+    ]
+  },
+  "07 search 'premium' (~400k matches)": {
+    "ms": 1043.41,
+    "planMs": 0.27,
+    "hit": 1568177,
+    "read": 43371,
+    "removed": 2677,
+    "sort": "quicksort",
+    "indexes": [
+      "products_search_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": []
+  },
+  "08 leaf category, newest": {
+    "ms": 2246.12,
+    "planMs": 0.55,
+    "hit": 3512954,
+    "read": 427681,
+    "removed": 311,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "product_categories_pkey",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [
+      "Seq Scan(categories)"
+    ]
+  },
+  "09 root category (+descendants), newest": {
+    "ms": 2494.77,
+    "planMs": 0.61,
+    "hit": 3661780,
+    "read": 589263,
+    "removed": 311,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "product_categories_pkey",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [
+      "Seq Scan(categories)"
+    ]
+  },
+  "10 brand filter, newest": {
+    "ms": 827.49,
+    "planMs": 0.21,
+    "hit": 715402,
+    "read": 282320,
+    "removed": 976629,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [
+      "Seq Scan(manufacturers)"
+    ]
+  },
+  "11 price 100-120, newest": {
+    "ms": 964.35,
+    "planMs": 0.33,
+    "hit": 765810,
+    "read": 337957,
+    "removed": 960040,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": []
+  },
+  "12 in stock only, newest": {
+    "ms": 2666.63,
+    "planMs": 0.37,
+    "hit": 4413777,
+    "read": 491036,
+    "removed": 100271,
+    "sort": "quicksort",
+    "indexes": [
+      "products_newest_idx",
+      "inventory_pkey",
+      "manufacturers_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": []
+  },
+  "13 combo: root category + 'oak' + price<=200, price asc": {
+    "ms": 199.98,
+    "planMs": 0.54,
+    "hit": 151723,
+    "read": 73834,
+    "removed": 181734,
+    "sort": "quicksort",
+    "indexes": [
+      "products_active_price_idx",
+      "product_categories_pkey",
+      "manufacturers_pkey",
+      "inventory_pkey",
+      "product_images_product_idx"
+    ],
+    "seqScans": [
+      "Seq Scan(categories)"
+    ]
+  }
+}

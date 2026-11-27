@@ -1,0 +1,55 @@
+# Whole stack on one machine:  docker compose up --build   ->  shop http://localhost:5001, API http://localhost:5000/api/docs
+# Secrets (Stripe, Resend, Cloudinary, JWT) come from backend/.env; the lines under `environment:` override it, so the stack
+# uses ITS OWN Postgres and Redis (never your Supabase database).
+x-api: &api
+  build: ./backend
+  env_file: backend/.env
+  environment: &api-env
+    DATABASE_URL: postgresql://shopeasy:shopeasy@postgres:5432/shopeasy
+    DATABASE_SSL: "false"
+    REDIS_URL: redis://redis:6379
+    APP_URL: http://localhost:5001
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_USER: shopeasy, POSTGRES_PASSWORD: shopeasy, POSTGRES_DB: shopeasy }
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro # runs once, when the volume is first created
+    ports: ["5434:5432"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U shopeasy"], interval: 5s, timeout: 3s, retries: 10 }
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"] # noeviction: BullMQ must never lose a queue key
+    volumes: [redisdata:/data]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, timeout: 3s, retries: 10 }
+    restart: unless-stopped
+
+  api:
+    <<: *api
+    environment: { <<: *api-env, RUN_WORKERS: "false" } # background jobs run in the worker container
+    ports: ["5000:5000"]
+
+  worker:
+    <<: *api
+    command: ["node", "dist/worker.js"]
+    healthcheck: { disable: true }
+    environment: { <<: *api-env, RUN_WORKERS: "true" }
+
+  web:
+    build: { context: ./frontend, args: { API_URL: "http://api:5000" } }
+    environment: { API_URL: "http://api:5000" }
+    depends_on: { api: { condition: service_healthy } }
+    ports: ["5001:5001"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
