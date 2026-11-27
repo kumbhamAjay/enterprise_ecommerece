@@ -154,3 +154,23 @@ export type EmailStats = {
   mode: "queue" | "inline";
   provider: string;
 };
+
+// ---- analytics and user administration (admin) ----
+export type Kpi = { value: number; previous: number; changePct: number | null };
+export type Summary = {
+  range: { from: string; to: string };
+  revenue: Kpi; orders: Kpi; avgOrderValue: Kpi; buyers: number; newCustomers: number;
+  refunded: { orders: number; total: number };
+  ordersByStatus: { status: string; orders: number; total: number }[];
+};
+export type RevenuePoint = { bucket: string; orders: number; revenue: number; cumulative: number; growthPct: number | null };
+export type TopProduct = { rank: number; sku: string; name: string; productId: string | null; units: number; orders: number; revenue: number; sharePct: number };
+export type TopCustomer = { userId: string; email: string; orders: number; spend: number; avgOrder: number; lastOrderAt: string };
+export type AdminUser = {
+  id: string; firstName: string; lastName: string | null; email: string; isActive: boolean; emailVerified: boolean;
+  createdAt: string; roles: string[]; orders: number; spend: number;
+};
+export type AdminUserDetail = Omit<AdminUser, "orders" | "spend"> & {
+  recentOrders: { id: string; orderNumber: string; status: string; total: number; placedAt: string }[];
+  audit: { action: string; detail: Record<string, unknown> | null; createdAt: string; actorEmail: string | null }[];
+};

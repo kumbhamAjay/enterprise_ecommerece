@@ -106,6 +106,33 @@ const emailPaths = {
   "/api/admin/diagnostics": {
     get: op({ tag: "Admin", summary: "DB pool, query counts, cache and process health (admin)", auth: true, res: { 200: ok("{ db, cache, process }") } }),
   },
+  "/api/admin/analytics/summary": {
+    get: op({ tag: "Admin", summary: "KPIs for ?from&to (YYYY-MM-DD, default last 30 days, max 1 year) vs the previous period + orders by status (admin)", auth: true, res: { 200: ok("{ revenue, orders, avgOrderValue, buyers, newCustomers, refunded, ordersByStatus }") } }),
+  },
+  "/api/admin/analytics/revenue": {
+    get: op({ tag: "Admin", summary: "Revenue series, ?interval=day|week|month, gaps filled with zeros, running total and growth (from a materialized view, refreshed every 5 min)", auth: true, res: { 200: ok("{ series: [{ bucket, orders, revenue, cumulative, growthPct }] }") } }),
+  },
+  "/api/admin/analytics/top-products": {
+    get: op({ tag: "Admin", summary: "Best sellers: ?limit&minUnits (HAVING), ranked, with share of revenue", auth: true, res: { 200: ok("[{ rank, sku, name, units, orders, revenue, sharePct }]") } }),
+  },
+  "/api/admin/analytics/top-customers": {
+    get: op({ tag: "Admin", summary: "Top customers by spend: ?limit&minOrders (HAVING)", auth: true, res: { 200: ok("[{ userId, email, orders, spend, avgOrder, lastOrderAt }]") } }),
+  },
+  "/api/admin/analytics/refresh": {
+    post: op({ tag: "Admin", summary: "Refresh the daily sales materialized view now", auth: true, res: { 200: ok("{ message }") } }),
+  },
+  "/api/admin/users": {
+    get: op({ tag: "Admin", summary: "Users: ?q&role&status=active|disabled&page&limit, with roles, lifetime orders and spend (admin)", auth: true, res: { 200: ok("{ data: [...], meta }") } }),
+  },
+  "/api/admin/users/{id}": {
+    get: op({ tag: "Admin", summary: "User detail with recent orders and the audit trail (admin)", auth: true, res: { 200: ok("user") } }),
+  },
+  "/api/admin/users/{id}/status": {
+    patch: op({ tag: "Admin", summary: "Enable/disable { isActive }. Disabling ends all sessions. Admins: customers only; super admin: anyone but self. Audited.", auth: true, res: { 200: ok("user") } }),
+  },
+  "/api/admin/users/{id}/roles": {
+    put: op({ tag: "Admin", summary: "Set roles { roles: [CUSTOMER|ADMIN|SUPER_ADMIN] } (super admin only, not yourself). Audited; their token is revoked so the change applies at once.", auth: true, res: { 200: ok("user") } }),
+  },
   "/api/admin/emails": {
     get: { ...op({ tag: "Emails", summary: "Email log (the outbox): every email we intended to send, with status, attempts and last error", admin: true, res: { 200: ok("{ data, meta }") } }),
       parameters: [{ name: "status", in: "query", required: false, schema: { type: "string", enum: ["PENDING", "SENT", "FAILED"] } }, { name: "page", in: "query", required: false, schema: { type: "integer" } }, { name: "limit", in: "query", required: false, schema: { type: "integer" } }] },

@@ -14,6 +14,8 @@ import { adminPaymentRoutes, paymentRoutes } from "./modules/payments/payment.ro
 import { adminCacheRoutes } from "./modules/cache/cache.routes";
 import { adminUploadRoutes } from "./modules/uploads/upload.routes";
 import { adminEmailRoutes } from "./modules/notifications/email.routes";
+import { adminAnalyticsRoutes } from "./modules/analytics/analytics.routes";
+import { adminUserRoutes } from "./modules/admin-users/admin-user.routes";
 import { adminDiagnosticsRoutes } from "./modules/diagnostics/diagnostics.routes";
 import { mountBullBoard } from "./modules/notifications/board";
 import { cacheContext } from "./utils/cache";
@@ -56,6 +58,8 @@ app.use("/api/admin/cache", adminCacheRoutes);
 app.use("/api/admin/uploads", adminUploadRoutes);
 app.use("/api/admin/emails", adminEmailRoutes);
 app.use("/api/admin/diagnostics", adminDiagnosticsRoutes);
+app.use("/api/admin/analytics", adminAnalyticsRoutes);
+app.use("/api/admin/users", adminUserRoutes);
 mountBullBoard(app);
 app.use(errorHandler);
 

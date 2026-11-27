@@ -10,6 +10,7 @@ export async function scheduleJobs() {
   await every("expire-reservations", 60_000);
   await every("expire-orders", 60_000);
   await every("email-dispatch", 30_000);
+  await every("refresh-sales", 5 * 60_000);
   await withTimeout(q.upsertJobScheduler("cleanup", { pattern: "0 3 * * *" }, { name: "cleanup" }), 3000); // daily 03:00
   if (process.env.STRIPE_SECRET_KEY) await every("reconcile-payments", 5 * 60_000);
   else await q.removeJobScheduler("reconcile-payments").catch(() => {});
@@ -22,5 +23,6 @@ export function startTimerFallback() {
   loop("expire-reservations", 60_000);
   loop("expire-orders", 60_000);
   loop("email-dispatch", 30_000);
+  loop("refresh-sales", 5 * 60_000);
   if (process.env.STRIPE_SECRET_KEY) loop("reconcile-payments", 5 * 60_000);
 }
