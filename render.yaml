@@ -1,0 +1,53 @@
+# Render Blueprint: Render reads this file from the repo and creates everything below.  Dashboard -> New -> Blueprint -> pick the repo.
+# Free-tier layout (good for learning): the API also runs the background jobs. Free web services sleep after ~15 min idle:
+# the first request after that takes ~50 s, and queued emails are sent once it wakes (the outbox + dispatch job catch up).
+# For always-on jobs, add the `worker` service at the bottom (paid) and set RUN_WORKERS=false on the API.
+services:
+  - type: web
+    name: shopeasy-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /api/ready        # 200 only when the database answers: Render won't route traffic to an instance that can't serve
+    envVars:
+      - { key: NODE_ENV, value: production }
+      - { key: TRUST_PROXY, value: "2" }   # Render's load balancer + the Next proxy -> req.ip is the real visitor
+      - { key: DATABASE_URL, sync: false }   # you paste it in the dashboard (your Supabase pooler URL); never commit it
+      - { key: JWT_SECRET, generateValue: true }
+      - { key: JWT_REFRESH_SECRET, generateValue: true }
+      - { key: REDIS_URL, fromService: { type: keyvalue, name: shopeasy-redis, property: connectionString } }
+      - { key: APP_URL, sync: false }        # public shop URL, e.g. https://shopeasy-web.onrender.com (used in email links)
+      - { key: STRIPE_SECRET_KEY, sync: false }
+      - { key: STRIPE_PUBLIC_KEY, sync: false }
+      - { key: STRIPE_WEBHOOK_SECRET, sync: false }
+      - { key: RESEND_API_KEY, sync: false }
+      - { key: EMAIL_FROM, sync: false }
+      - { key: CLOUDINARY_URL, sync: false }
+      - { key: BULL_BOARD_PASSWORD, generateValue: true }
+
+  - type: web
+    name: shopeasy-web
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    envVars:
+      # Private-network address of the API ("host:port"); the browser only ever talks to this site, the proxy forwards /api/*.
+      - { key: API_URL, fromService: { type: web, name: shopeasy-api, property: hostport } }
+
+  - type: keyvalue                      # Render's Redis-compatible store
+    name: shopeasy-redis
+    plan: free
+    maxmemoryPolicy: noeviction         # BullMQ must never lose a queue key
+    ipAllowList: []                     # reachable only from inside Render's private network
+
+  # Optional, paid: run the background jobs in their own always-on process. Uncomment, and set RUN_WORKERS=false on the API.
+  # - type: worker
+  #   name: shopeasy-worker
+  #   runtime: docker
+  #   dockerfilePath: ./backend/Dockerfile
+  #   dockerContext: ./backend
+  #   dockerCommand: node dist/worker.js
+  #   plan: starter
+  #   envVars: [ same as the API, without TRUST_PROXY ]

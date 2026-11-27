@@ -2,7 +2,7 @@ import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { HttpError } from "../utils/httpError";
 
-export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   if (err instanceof ZodError) {
     return res.status(400).json({ success: false, errors: err.issues.map((i) => ({ field: i.path.join("."), message: i.message })) });
   }
@@ -18,6 +18,6 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (code === "23505") return res.status(409).json({ success: false, message: "Already exists" });
   if (code === "23503") return res.status(409).json({ success: false, message: "Related record is missing or still in use" });
   if (code === "23514") return res.status(400).json({ success: false, message: "Value violates a database rule" });
-  console.error(err); // never leak internals to the client
+  req.log.error({ err }, "unhandled error"); // full detail goes to the log (with the request id), never to the client
   res.status(500).json({ success: false, message: "Internal server error" });
 };

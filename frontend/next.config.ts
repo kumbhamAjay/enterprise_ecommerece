@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
-const API_URL = process.env.API_URL ?? "http://127.0.0.1:5000";
+// Accepts "http://host:port" or a bare "host:port" (what Render's private network gives us)
+const API_URL = (process.env.API_URL ?? "http://127.0.0.1:5000").replace(/^(?!https?:\/\/)/, "http://");
 
 const nextConfig: NextConfig = {
+  output: "standalone", // minimal self-contained server for the Docker image
   turbopack: {
     rules: {
       "*.css": {
