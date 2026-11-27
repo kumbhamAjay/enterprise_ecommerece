@@ -6,9 +6,8 @@ RUN npm ci
 
 FROM node:22-slim AS build
 WORKDIR /app
-# next.config.ts bakes the /api rewrite target at BUILD time, so the API address is a build argument.
-ARG API_URL=http://api:5000
-ENV API_URL=$API_URL NEXT_TELEMETRY_DISABLED=1
+# The API address is NOT needed at build time: src/proxy.ts reads API_URL when each request arrives.
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
