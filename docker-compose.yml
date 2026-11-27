@@ -44,7 +44,7 @@ services:
     environment: { <<: *api-env, RUN_WORKERS: "true" }
 
   web:
-    build: { context: ./frontend, args: { API_URL: "http://api:5000" } }
+    build: ./frontend
     environment: { API_URL: "http://api:5000" }
     depends_on: { api: { condition: service_healthy } }
     ports: ["5001:5001"]
