@@ -2,7 +2,7 @@
 import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { qs } from "./format";
-import type { Address, Category, CheckoutPreview, EmailRow, EmailStats, InventoryItem, LedgerEntry, Feed, Manufacturer, Order, OrderListItem, Page, ProductDetail, ProductQuery, ProductSummary } from "./types";
+import type { AdminUser, Address, Category, CheckoutPreview, EmailRow, EmailStats, InventoryItem, LedgerEntry, Feed, Manufacturer, Order, OrderListItem, Page, ProductDetail, ProductQuery, ProductSummary, RevenuePoint, Summary, TopCustomer, TopProduct } from "./types";
 
 export const useProducts = (q: ProductQuery) =>
   useQuery({
@@ -79,4 +79,28 @@ export const useEmails = (status: string, page: number) =>
     queryFn: () => api.page<Page<EmailRow>>(`/api/admin/emails?${qs({ status: status || undefined, page, limit: 12 })}`),
     placeholderData: keepPreviousData,
     refetchInterval: 10_000, // statuses change in the background as workers send and retry
+  });
+
+// ---- analytics + users (admin) ----
+const range = (days: number) => {
+  const to = new Date(); const from = new Date(to.getTime() - (days - 1) * 86_400_000);
+  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+};
+export const useAnalytics = (days: number) => {
+  const r = range(days);
+  const interval = days > 90 ? "week" : "day";
+  const q = qs(r);
+  return {
+    summary: useQuery({ queryKey: ["analytics", "summary", q], queryFn: () => api.get<Summary>(`/api/admin/analytics/summary?${q}`), refetchInterval: 60_000 }),
+    revenue: useQuery({ queryKey: ["analytics", "revenue", q, interval], queryFn: () => api.get<{ series: RevenuePoint[] }>(`/api/admin/analytics/revenue?${q}&interval=${interval}`), refetchInterval: 60_000 }),
+    products: useQuery({ queryKey: ["analytics", "products", q], queryFn: () => api.get<TopProduct[]>(`/api/admin/analytics/top-products?${q}&limit=8`) }),
+    customers: useQuery({ queryKey: ["analytics", "customers", q], queryFn: () => api.get<TopCustomer[]>(`/api/admin/analytics/top-customers?${q}&limit=8`) }),
+  };
+};
+
+export const useAdminUsers = (f: { q?: string; role?: string; status?: string; page: number }) =>
+  useQuery({
+    queryKey: ["admin-users", f],
+    queryFn: () => api.page<Page<AdminUser>>(`/api/admin/users?${qs({ ...f, limit: 15 })}`),
+    placeholderData: keepPreviousData,
   });

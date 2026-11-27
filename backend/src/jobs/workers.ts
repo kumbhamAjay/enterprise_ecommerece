@@ -4,6 +4,7 @@ import { expireStale as expireReservations } from "../modules/inventory/inventor
 import { dispatchPending, processEmail } from "../modules/notifications/email.service";
 import { expireStale as expireOrders } from "../modules/orders/order.service";
 import { reconcile } from "../modules/payments/payment.service";
+import { refreshSales } from "../modules/analytics/analytics.service";
 import { runCleanup } from "./cleanup";
 
 // The scheduled maintenance tasks. Each is idempotent, so running one twice (or on two instances) is harmless.
@@ -13,6 +14,7 @@ export async function runMaintenance(name: string): Promise<unknown> {
     case "expire-orders": return expireOrders();
     case "reconcile-payments": return process.env.STRIPE_SECRET_KEY ? reconcile() : "skipped (Stripe not configured)";
     case "email-dispatch": return dispatchPending(200); // heals emails whose enqueue failed (Redis blip) or whose job was lost
+    case "refresh-sales": return refreshSales();
     case "cleanup": return runCleanup();
     default: throw new Error(`unknown maintenance job: ${name}`);
   }

@@ -336,3 +336,37 @@ CREATE INDEX IF NOT EXISTS products_mfr_newest_idx ON products (manufacturer_id,
 -- category filter: both columns in the index, so "is this product in these categories" never touches the table
 DROP INDEX IF EXISTS product_categories_category_idx;
 CREATE INDEX IF NOT EXISTS product_categories_cat_product_idx ON product_categories (category_id, product_id);
+
+-- ================= Module 10: reporting and user administration =================
+-- "Revenue" = orders that were paid and are still standing (not cancelled/refunded). One definition, used by every report.
+CREATE OR REPLACE VIEW recognised_orders AS
+  SELECT id, user_id, customer_email, status, subtotal, shipping, tax, total, paid_at
+  FROM orders
+  WHERE paid_at IS NOT NULL AND status NOT IN ('CANCELLED', 'REFUNDED');
+
+CREATE INDEX IF NOT EXISTS orders_paid_at_idx ON orders (paid_at) WHERE paid_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS order_items_product_idx ON order_items (product_id);
+
+-- Pre-aggregated daily sales: the revenue report scans ~365 rows instead of every order. Refreshed every 5 minutes.
+-- The UNIQUE index is what allows REFRESH ... CONCURRENTLY (readers are never blocked while it refreshes).
+CREATE MATERIALIZED VIEW IF NOT EXISTS sales_daily AS
+  SELECT (paid_at AT TIME ZONE 'UTC')::date AS day,
+         count(*)::int AS orders,
+         sum(total)    AS revenue,
+         sum(subtotal) AS merchandise,
+         sum(shipping) AS shipping,
+         sum(tax)      AS tax
+  FROM recognised_orders
+  GROUP BY 1;
+CREATE UNIQUE INDEX IF NOT EXISTS sales_daily_day_idx ON sales_daily (day);
+
+-- Who changed what: role and account-status changes are security events, recorded in the same transaction as the change.
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+  id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  actor_user_id  bigint REFERENCES users(id) ON DELETE SET NULL,
+  target_user_id bigint REFERENCES users(id) ON DELETE SET NULL,
+  action         text NOT NULL,
+  detail         jsonb,
+  created_at     timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS admin_audit_target_idx ON admin_audit_log (target_user_id, id DESC);

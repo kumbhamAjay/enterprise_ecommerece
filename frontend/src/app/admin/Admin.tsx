@@ -10,16 +10,18 @@ import { ManufacturersAdmin } from "./ManufacturersAdmin";
 import { InventoryAdmin } from "./InventoryAdmin";
 import { OrdersAdmin } from "./OrdersAdmin";
 import { EmailsAdmin } from "./EmailsAdmin";
+import { AnalyticsAdmin } from "./AnalyticsAdmin";
+import { UsersAdmin } from "./UsersAdmin";
 import { useInventory } from "@/lib/hooks";
 
-const TABS = [["orders", "Orders"], ["products", "Products"], ["inventory", "Inventory"], ["categories", "Categories"], ["brands", "Brands"], ["emails", "Emails"]] as const;
+const TABS = [["analytics", "Analytics"], ["orders", "Orders"], ["products", "Products"], ["inventory", "Inventory"], ["categories", "Categories"], ["brands", "Brands"], ["users", "Users"], ["emails", "Emails"]] as const;
 
 export function Admin() {
   const { status, allowed } = useRequireAuth(true);
   const router = useRouter();
   const lowStock = useInventory({ lowStock: "true", limit: 1 }, allowed).data?.meta.total ?? 0; // badge on the Inventory tab
   const params = useSearchParams(); // a hook: call it once, at the top level, never inside a callback or loop
-  const tab = TABS.find(([id]) => id === params.get("tab"))?.[0] ?? "orders";
+  const tab = TABS.find(([id]) => id === params.get("tab"))?.[0] ?? "analytics";
 
   if (status === "loading" || status === "guest")
     return <Container className="py-16"><Skeleton className="h-12 w-72" /><Skeleton className="mt-10 h-96 w-full" /></Container>;
@@ -40,7 +42,7 @@ export function Admin() {
     <Container className="py-12 lg:py-16">
       <div className="reveal">
         <p className="eyebrow flex items-center gap-4"><span className="h-px w-8 bg-gold" /> Back office</p>
-        <h1 className="mt-4 font-serif text-5xl font-light tracking-tight">Catalog</h1>
+        <h1 className="mt-4 font-serif text-5xl font-light tracking-tight">Dashboard</h1>
       </div>
       <div role="tablist" className="mt-10 flex gap-1 border-b border-line">
         {TABS.map(([id, label]) => (
@@ -52,6 +54,8 @@ export function Admin() {
         ))}
       </div>
       <div key={tab} className="reveal pt-10">
+        {tab === "analytics" && <AnalyticsAdmin />}
+        {tab === "users" && <UsersAdmin />}
         {tab === "orders" && <OrdersAdmin />}
         {tab === "products" && <ProductsAdmin />}
         {tab === "inventory" && <InventoryAdmin />}
